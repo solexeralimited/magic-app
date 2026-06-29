@@ -152,6 +152,36 @@ export async function sendCallAheadEmail(job: Job): Promise<void> {
   );
 }
 
+export async function sendRunReadyEmail(jobs: Job[]): Promise<void> {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const dateStr = tomorrow.toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  const byDriver: Record<string, number> = {};
+  for (const job of jobs) {
+    byDriver[job.driverName] = (byDriver[job.driverName] ?? 0) + 1;
+  }
+
+  const driverRows = Object.entries(byDriver)
+    .map(([name, count]) =>
+      `<div class="detail-row"><span class="detail-label">${name}</span><span class="detail-value">${count} job${count !== 1 ? 's' : ''}</span></div>`
+    )
+    .join('');
+
+  const html = baseEmailTemplate(`
+    <h2 style="margin-top:0;color:#1e293b;">📋 Tomorrow's Run is Ready</h2>
+    <p>The automated run generator has created <strong>${jobs.length} job${jobs.length !== 1 ? 's' : ''}</strong> for <strong>${dateStr}</strong>.</p>
+    ${driverRows}
+    <p style="margin-top:16px;color:#64748b;font-size:14px;">The run goes live to drivers at 5am. Log in to review or adjust before then.</p>
+  `);
+
+  await sendEmail(
+    process.env.ADMIN_EMAIL!,
+    `📋 Tomorrow's Run Ready – ${dateStr} (${jobs.length} jobs)`,
+    html
+  );
+}
+
 export async function sendDailySummaryEmail(stats: {
   total: number;
   done: number;
