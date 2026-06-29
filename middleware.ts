@@ -23,7 +23,7 @@ export default withAuth(
       authorized({ token, req }) {
         const { pathname } = req.nextUrl;
         // Public routes
-        if (pathname.startsWith('/login') || pathname.startsWith('/api/auth')) return true;
+        if (pathname.startsWith('/login') || pathname.startsWith('/api/auth') || pathname === '/api/drivers/names') return true;
         // All other routes require a token
         return !!token;
       },

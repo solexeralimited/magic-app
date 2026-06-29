@@ -1,8 +1,8 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Truck, Lock, Eye, EyeOff, Loader2, Shield } from 'lucide-react';
+import { Truck, Lock, Eye, EyeOff, Loader2, Shield, ChevronDown } from 'lucide-react';
 import { Suspense } from 'react';
 
 type Mode = 'driver' | 'admin';
@@ -18,6 +18,13 @@ function LoginForm() {
   // Driver form
   const [driverName, setDriverName] = useState('');
   const [pin, setPin] = useState('');
+  const [driverNames, setDriverNames] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetch('/api/drivers/names')
+      .then(r => r.json())
+      .then(d => { if (d.success) setDriverNames(d.data); });
+  }, []);
 
   // Admin form
   const [email, setEmail] = useState('');
@@ -115,15 +122,19 @@ function LoginForm() {
           {mode === 'driver' && (
             <form onSubmit={handleDriverLogin} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1.5">Your Name</label>
-                <input
-                  type="text"
-                  value={driverName}
-                  onChange={e => setDriverName(e.target.value)}
-                  placeholder="e.g. TK"
-                  required
-                  className="w-full bg-slate-800 border border-slate-600 text-white placeholder-slate-500 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
+                <label className="block text-sm font-medium text-slate-300 mb-1.5">Select Your Name</label>
+                <div className="relative">
+                  <select
+                    value={driverName}
+                    onChange={e => setDriverName(e.target.value)}
+                    required
+                    className="w-full appearance-none bg-slate-800 border border-slate-600 text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-10"
+                  >
+                    <option value="" disabled>— choose your name —</option>
+                    {driverNames.map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-1.5">PIN</label>
