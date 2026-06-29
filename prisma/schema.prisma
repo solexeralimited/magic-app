@@ -6,11 +6,22 @@ datasource db {
   provider = "postgresql"
 }
 
+model AdminUser {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  password  String   // bcrypt hashed
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model Driver {
   id               String             @id @default(cuid())
   name             String             @unique
   email            String?
   phone            String?
+  pin              String?            // bcrypt hashed 4-digit PIN
+  isActive         Boolean            @default(true)
   createdAt        DateTime           @default(now())
   jobs             Job[]
   pushSubscription PushSubscription?
@@ -18,33 +29,33 @@ model Driver {
 }
 
 model Job {
-  id                    String   @id @default(cuid())
-  driverName            String
-  driver                Driver   @relation(fields: [driverName], references: [name])
-  jobOrder              Int
-  day                   String
-  jobType               String
-  customerName          String
-  address               String
-  phone                 String   @default("")
-  items                 String   @default("")
-  notes                 String   @default("")
-  frequency             String   @default("")
-  nextServiceDate       String   @default("")
-  mapLink               String   @default("")
-  callAhead             Boolean  @default(false)
-  status                String   @default("Pending")
-  completionTime        DateTime?
-  issueNotes            String?
-  notifDriverNewRun     Boolean  @default(false)
-  notifDriverUpdated    Boolean  @default(false)
-  notifAdminIssue       Boolean  @default(false)
-  notifAdminCantAccess  Boolean  @default(false)
-  notifCustomerCallAhead Boolean @default(false)
-  runType               String   @default("Daily") // "Tomorrow" | "Daily"
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
-  runLogEntry           RunLog?
+  id                     String    @id @default(cuid())
+  driverName             String
+  driver                 Driver    @relation(fields: [driverName], references: [name])
+  jobOrder               Int
+  day                    String
+  jobType                String
+  customerName           String
+  address                String    @default("")
+  phone                  String    @default("")
+  items                  String    @default("")
+  notes                  String    @default("")
+  frequency              String    @default("")
+  nextServiceDate        String    @default("")
+  mapLink                String    @default("")
+  callAhead              Boolean   @default(false)
+  status                 String    @default("Pending")
+  completionTime         DateTime?
+  issueNotes             String?
+  notifDriverNewRun      Boolean   @default(false)
+  notifDriverUpdated     Boolean   @default(false)
+  notifAdminIssue        Boolean   @default(false)
+  notifAdminCantAccess   Boolean   @default(false)
+  notifCustomerCallAhead Boolean   @default(false)
+  runType                String    @default("Master") // Master | Tomorrow | Daily
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  runLogEntry            RunLog?
 }
 
 model RunLog {
@@ -63,31 +74,31 @@ model RunLog {
 }
 
 model PushSubscription {
-  id          String   @id @default(cuid())
-  driverName  String   @unique
-  driver      Driver   @relation(fields: [driverName], references: [name])
-  endpoint    String
-  p256dh      String
-  auth        String
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default(cuid())
+  driverName String   @unique
+  driver     Driver   @relation(fields: [driverName], references: [name])
+  endpoint   String
+  p256dh     String
+  auth       String
+  updatedAt  DateTime @updatedAt
 }
 
 model AdminMessage {
-  id         String    @id @default(cuid())
-  to         String    // driver name or "all"
-  driver     Driver?   @relation(fields: [to], references: [name])
-  message    String
-  sentAt     DateTime  @default(now())
-  readAt     DateTime?
+  id     String    @id @default(cuid())
+  to     String
+  driver Driver?   @relation(fields: [to], references: [name])
+  message String
+  sentAt  DateTime  @default(now())
+  readAt  DateTime?
 }
 
 model NotificationLog {
   id        String   @id @default(cuid())
-  type      String   // push | email | sms
+  type      String
   recipient String
   subject   String
   body      String
-  status    String   // sent | failed
+  status    String
   error     String?
   sentAt    DateTime @default(now())
 }
