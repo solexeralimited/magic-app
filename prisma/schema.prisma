@@ -1,0 +1,93 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Driver {
+  id               String             @id @default(cuid())
+  name             String             @unique
+  email            String?
+  phone            String?
+  createdAt        DateTime           @default(now())
+  jobs             Job[]
+  pushSubscription PushSubscription?
+  messagesReceived AdminMessage[]
+}
+
+model Job {
+  id                    String   @id @default(cuid())
+  driverName            String
+  driver                Driver   @relation(fields: [driverName], references: [name])
+  jobOrder              Int
+  day                   String
+  jobType               String
+  customerName          String
+  address               String
+  phone                 String   @default("")
+  items                 String   @default("")
+  notes                 String   @default("")
+  frequency             String   @default("")
+  nextServiceDate       String   @default("")
+  mapLink               String   @default("")
+  callAhead             Boolean  @default(false)
+  status                String   @default("Pending")
+  completionTime        DateTime?
+  issueNotes            String?
+  notifDriverNewRun     Boolean  @default(false)
+  notifDriverUpdated    Boolean  @default(false)
+  notifAdminIssue       Boolean  @default(false)
+  notifAdminCantAccess  Boolean  @default(false)
+  notifCustomerCallAhead Boolean @default(false)
+  runType               String   @default("Daily") // "Tomorrow" | "Daily"
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  runLogEntry           RunLog?
+}
+
+model RunLog {
+  id             String   @id @default(cuid())
+  jobId          String   @unique
+  job            Job      @relation(fields: [jobId], references: [id])
+  driverName     String
+  customerName   String
+  address        String
+  jobType        String
+  completionTime DateTime
+  status         String
+  issueNotes     String?
+  day            String
+  date           DateTime @default(now())
+}
+
+model PushSubscription {
+  id          String   @id @default(cuid())
+  driverName  String   @unique
+  driver      Driver   @relation(fields: [driverName], references: [name])
+  endpoint    String
+  p256dh      String
+  auth        String
+  updatedAt   DateTime @updatedAt
+}
+
+model AdminMessage {
+  id         String    @id @default(cuid())
+  to         String    // driver name or "all"
+  driver     Driver?   @relation(fields: [to], references: [name])
+  message    String
+  sentAt     DateTime  @default(now())
+  readAt     DateTime?
+}
+
+model NotificationLog {
+  id        String   @id @default(cuid())
+  type      String   // push | email | sms
+  recipient String
+  subject   String
+  body      String
+  status    String   // sent | failed
+  error     String?
+  sentAt    DateTime @default(now())
+}
