@@ -1,24 +1,35 @@
 'use client';
+import { useState } from 'react';
 import { Job } from '@/types';
 import JobCard from './JobCard';
-import { CheckCircle2, ClipboardList } from 'lucide-react';
+import { ClipboardList, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface JobListProps {
   jobs: Job[];
   onStatusChange: (id: string, status: Job['status'], notes?: string) => Promise<boolean>;
-  showCompleted?: boolean;
 }
 
-export default function JobList({ jobs, onStatusChange, showCompleted }: JobListProps) {
-  const active = jobs.filter(j => j.status === 'Pending');
+export default function JobList({ jobs, onStatusChange }: JobListProps) {
+  const [showCompleted, setShowCompleted] = useState(false);
+
+  const active    = jobs.filter(j => j.status === 'Pending');
   const completed = jobs.filter(j => j.status !== 'Pending');
 
   if (jobs.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-gray-400">
-        <ClipboardList className="w-12 h-12 mb-3 opacity-30" />
-        <p className="text-base font-medium">No jobs today</p>
-        <p className="text-sm">Check back later or contact the office</p>
+      <div className="flex flex-col items-center justify-center py-20 text-center">
+        <div
+          className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
+          style={{ background: 'var(--shell-raised)', border: '1px solid var(--shell-border)' }}
+        >
+          <ClipboardList className="w-7 h-7" style={{ color: 'var(--text-tertiary)' }} />
+        </div>
+        <p className="font-display font-semibold" style={{ color: 'var(--text-inverse)', fontSize: '16px', fontFamily: 'var(--font-sora)' }}>
+          No jobs today
+        </p>
+        <p className="text-sm mt-1" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+          Check back later or contact the office
+        </p>
       </div>
     );
   }
@@ -28,8 +39,10 @@ export default function JobList({ jobs, onStatusChange, showCompleted }: JobList
       {/* Active jobs */}
       {active.length > 0 && (
         <div className="space-y-3">
-          {active.map(job => (
-            <JobCard key={job.id} job={job} onStatusChange={onStatusChange} />
+          {active.map((job, i) => (
+            <div key={job.id} style={{ animationDelay: `${i * 0.05}s` }}>
+              <JobCard job={job} onStatusChange={onStatusChange} />
+            </div>
           ))}
         </div>
       )}
@@ -37,17 +50,38 @@ export default function JobList({ jobs, onStatusChange, showCompleted }: JobList
       {/* Completed section */}
       {completed.length > 0 && (
         <div>
-          <div className="flex items-center gap-2 mb-3">
-            <CheckCircle2 className="w-4 h-4 text-green-500" />
-            <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
-              Completed ({completed.length})
-            </h2>
-          </div>
-          <div className="space-y-3">
-            {completed.map(job => (
-              <JobCard key={job.id} job={job} onStatusChange={onStatusChange} isCompleted />
-            ))}
-          </div>
+          <button
+            onClick={() => setShowCompleted(s => !s)}
+            className="w-full flex items-center justify-between px-1 py-2 mb-3 transition-opacity active:opacity-70"
+          >
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full" style={{ background: 'var(--status-done)' }} />
+              <span
+                className="text-xs font-semibold uppercase tracking-widest"
+                style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}
+              >
+                Completed
+              </span>
+              <span
+                className="rounded-full px-2 py-0.5 text-xs font-bold"
+                style={{ background: 'rgba(16,185,129,0.14)', color: '#059669', fontFamily: 'var(--font-dm-sans)' }}
+              >
+                {completed.length}
+              </span>
+            </div>
+            {showCompleted
+              ? <ChevronUp className="w-4 h-4" style={{ color: 'var(--text-tertiary)' }} />
+              : <ChevronDown className="w-4 h-4" style={{ color: 'var(--text-tertiary)' }} />
+            }
+          </button>
+
+          {showCompleted && (
+            <div className="space-y-3">
+              {completed.map(job => (
+                <JobCard key={job.id} job={job} onStatusChange={onStatusChange} isCompleted />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

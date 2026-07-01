@@ -1,43 +1,170 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ── Design tokens ───────────────────────────────────────────────────────── */
+:root {
+  --amber:           #F59E0B;
+  --amber-light:     #FCD34D;
+  --amber-dark:      #D97706;
+
+  --shell:           #0D1117;
+  --shell-raised:    #161B22;
+  --shell-border:    #21262D;
+
+  --surface:         #FFFFFF;
+  --surface-subtle:  #F8FAFC;
+  --surface-border:  #E5E7EB;
+
+  --text-primary:    #111827;
+  --text-secondary:  #6B7280;
+  --text-tertiary:   #9CA3AF;
+  --text-inverse:    #FFFFFF;
+
+  --status-pending:  #F59E0B;
+  --status-done:     #10B981;
+  --status-issue:    #EF4444;
+  --status-cant:     #F97316;
+
+  --radius-sm:  6px;
+  --radius-md:  10px;
+  --radius-lg:  16px;
+  --radius-xl:  22px;
+}
+
+/* ── Base ────────────────────────────────────────────────────────────────── */
 @layer base {
   html {
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   body {
-    @apply bg-gray-50 text-gray-900 font-sans;
-    -webkit-font-smoothing: antialiased;
+    font-family: var(--font-dm-sans), 'DM Sans', sans-serif;
+    background: var(--shell);
+    color: var(--text-primary);
+    margin: 0;
   }
 
-  * {
-    -webkit-touch-callout: none;
-  }
+  * { -webkit-touch-callout: none; }
 
-  input, textarea, select {
-    @apply text-base; /* prevent iOS zoom on focus */
+  /* Prevent iOS zoom on focus */
+  input, textarea, select { font-size: 16px; }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-sora), 'Sora', sans-serif;
+    letter-spacing: -0.025em;
   }
 }
 
+/* ── Component layer ─────────────────────────────────────────────────────── */
 @layer components {
+
+  /* Inputs */
   .input {
-    @apply w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white;
+    @apply w-full rounded-xl px-3.5 py-3 text-sm outline-none transition-all duration-150;
+    font-family: var(--font-dm-sans), sans-serif;
+    background: var(--surface-subtle);
+    border: 1.5px solid var(--surface-border);
+    color: var(--text-primary);
   }
+  .input:focus {
+    border-color: var(--amber);
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15);
+  }
+  .input::placeholder { color: var(--text-tertiary); }
+
+  /* Select arrow */
+  select.input {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%239CA3AF' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 36px;
+    appearance: none;
+  }
+
+  /* Labels */
   .label {
-    @apply block text-sm font-medium text-gray-700 mb-1;
+    @apply block mb-1.5;
+    font-family: var(--font-dm-sans), sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+  }
+
+  /* Cards */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.07), 0 4px 14px rgba(0,0,0,0.05);
+  }
+
+  .card-shell {
+    background: var(--shell-raised);
+    border: 1px solid var(--shell-border);
+    border-radius: var(--radius-lg);
+  }
+
+  /* Status badges */
+  .badge {
+    @apply inline-flex items-center gap-1;
+    font-family: var(--font-dm-sans), sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    border-radius: 999px;
+  }
+  .badge-pending  { background: rgba(245,158,11,0.14); color: #B45309; }
+  .badge-done     { background: rgba(16,185,129,0.14); color: #047857; }
+  .badge-issue    { background: rgba(239,68,68,0.14);  color: #B91C1C; }
+  .badge-cant     { background: rgba(249,115,22,0.14); color: #C2410C; }
+
+  /* TB Brand badge */
+  .tb-badge {
+    @apply flex items-center justify-center flex-shrink-0;
+    width: 36px;
+    height: 36px;
+    background: var(--amber);
+    border-radius: 9px;
+    font-family: var(--font-sora), sans-serif;
+    font-size: 13px;
+    font-weight: 800;
+    color: #000;
+    letter-spacing: -0.03em;
+  }
+
+  /* Skeleton loader */
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      var(--shell-raised) 25%,
+      var(--shell-border) 50%,
+      var(--shell-raised) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.4s infinite;
+    border-radius: var(--radius-md);
   }
 }
 
+/* ── Utilities ───────────────────────────────────────────────────────────── */
 @layer utilities {
-  .safe-pb {
-    padding-bottom: env(safe-area-inset-bottom, 0);
-  }
-  .safe-pt {
-    padding-top: env(safe-area-inset-top, 0);
-  }
+  .safe-pb { padding-bottom: env(safe-area-inset-bottom, 0); }
+  .safe-pt { padding-top: env(safe-area-inset-top, 0); }
+
+  .font-display { font-family: var(--font-sora), sans-serif; }
+  .font-body    { font-family: var(--font-dm-sans), sans-serif; }
+
+  /* Status left-border accent */
+  .border-l-status-pending  { border-left: 3px solid var(--status-pending); }
+  .border-l-status-done     { border-left: 3px solid var(--status-done); }
+  .border-l-status-issue    { border-left: 3px solid var(--status-issue); }
+  .border-l-status-cant     { border-left: 3px solid var(--status-cant); }
 }
