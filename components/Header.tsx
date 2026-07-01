@@ -1,5 +1,5 @@
 'use client';
-import { Truck, RefreshCw, Bell } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface HeaderProps {
@@ -17,39 +17,45 @@ export default function Header({
   subtitle,
   onRefresh,
   refreshing,
-  showNotificationBell,
-  onNotificationClick,
   rightContent,
 }: HeaderProps) {
   return (
-    <header className="bg-blue-600 text-white sticky top-0 z-40 shadow-lg">
-      <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="bg-white/20 rounded-xl p-2">
-            <Truck className="w-5 h-5" />
-          </div>
-          <div>
-            <h1 className="font-bold text-base leading-tight">{title}</h1>
-            {subtitle && <p className="text-blue-100 text-xs">{subtitle}</p>}
+    <header
+      className="sticky top-0 z-40"
+      style={{ background: 'var(--shell)', borderBottom: '1px solid var(--shell-border)' }}
+    >
+      <div className="max-w-2xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
+        {/* Left: brand + title */}
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="tb-badge flex-shrink-0">TB</div>
+          <div className="min-w-0">
+            <h1
+              className="font-display font-700 text-sm leading-tight truncate"
+              style={{ color: 'var(--text-inverse)', fontSize: '15px', fontWeight: 700 }}
+            >
+              {title}
+            </h1>
+            {subtitle && (
+              <p className="text-xs truncate" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                {subtitle}
+              </p>
+            )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+
+        {/* Right: actions */}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
           {rightContent}
-          {showNotificationBell && (
-            <button
-              onClick={onNotificationClick}
-              className="bg-white/20 rounded-full p-2 hover:bg-white/30 transition-colors"
-            >
-              <Bell className="w-4 h-4" />
-            </button>
-          )}
           {onRefresh && (
             <button
               onClick={onRefresh}
-              className={cn('bg-white/20 rounded-full p-2 hover:bg-white/30 transition-colors', refreshing && 'opacity-50')}
               disabled={refreshing}
+              className={cn(
+                'flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-150 disabled:opacity-40',
+              )}
+              style={{ background: 'var(--shell-raised)', border: '1px solid var(--shell-border)', color: 'var(--text-tertiary)' }}
             >
-              <RefreshCw className={cn('w-4 h-4', refreshing && 'animate-spin')} />
+              <RefreshCw className={cn('w-3.5 h-3.5', refreshing && 'animate-spin')} />
             </button>
           )}
         </div>

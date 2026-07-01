@@ -1,29 +1,60 @@
 'use client';
-import { cn } from '@/lib/utils';
 
 interface StatsCardProps {
   label: string;
   value: number | string;
-  color?: 'blue' | 'green' | 'red' | 'orange' | 'gray';
+  color?: 'amber' | 'green' | 'red' | 'orange' | 'gray';
   icon?: React.ReactNode;
 }
 
-const colors = {
-  blue: 'bg-blue-50 text-blue-700 border-blue-100',
-  green: 'bg-green-50 text-green-700 border-green-100',
-  red: 'bg-red-50 text-red-700 border-red-100',
-  orange: 'bg-orange-50 text-orange-700 border-orange-100',
-  gray: 'bg-gray-50 text-gray-700 border-gray-100',
+const accents: Record<string, string> = {
+  amber:  'var(--amber)',
+  green:  '#10B981',
+  red:    '#EF4444',
+  orange: '#F97316',
+  gray:   'var(--shell-border)',
 };
 
 export default function StatsCard({ label, value, color = 'gray', icon }: StatsCardProps) {
+  const accent = accents[color];
+
   return (
-    <div className={cn('rounded-2xl border p-4 flex flex-col gap-1', colors[color])}>
+    <div
+      className="relative overflow-hidden rounded-2xl p-4 flex flex-col gap-2"
+      style={{
+        background: 'var(--shell-raised)',
+        border: '1px solid var(--shell-border)',
+      }}
+    >
+      {/* Top accent line */}
+      <div className="absolute top-0 left-0 right-0 h-0.5 rounded-t-2xl" style={{ background: accent }} />
+
       <div className="flex items-center justify-between">
-        <span className="text-xs font-medium opacity-70">{label}</span>
-        {icon && <span className="opacity-60">{icon}</span>}
+        <span
+          style={{
+            fontFamily: 'var(--font-dm-sans)',
+            fontSize: '10px',
+            fontWeight: 600,
+            letterSpacing: '0.07em',
+            textTransform: 'uppercase',
+            color: 'var(--text-tertiary)',
+          }}
+        >
+          {label}
+        </span>
+        {icon && (
+          <span style={{ color: accent, opacity: 0.7 }}>
+            {icon}
+          </span>
+        )}
       </div>
-      <span className="text-2xl font-bold">{value}</span>
+
+      <span
+        className="font-display"
+        style={{ fontSize: '28px', fontWeight: 800, color: accent, lineHeight: 1 }}
+      >
+        {value}
+      </span>
     </div>
   );
 }

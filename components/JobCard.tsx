@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { Phone, MapPin, CheckCircle, AlertTriangle, Lock, ChevronDown, ChevronUp, Clock, Package, RotateCcw } from 'lucide-react';
 import { Job } from '@/types';
-import { cn, statusColor, statusLabel, formatTime } from '@/lib/utils';
+import { cn, formatTime } from '@/lib/utils';
 
 interface JobCardProps {
   job: Job;
@@ -10,11 +10,20 @@ interface JobCardProps {
   isCompleted?: boolean;
 }
 
+const statusConfig = {
+  Pending:        { label: 'Pending',         accent: 'var(--status-pending)', badge: 'badge-pending' },
+  Done:           { label: 'Done',            accent: 'var(--status-done)',    badge: 'badge-done'    },
+  Issue:          { label: 'Issue',           accent: 'var(--status-issue)',   badge: 'badge-issue'   },
+  CouldNotAccess: { label: 'No Access',       accent: 'var(--status-cant)',    badge: 'badge-cant'    },
+};
+
 export default function JobCard({ job, onStatusChange, isCompleted }: JobCardProps) {
-  const [expanded, setExpanded] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded]         = useState(false);
+  const [loading, setLoading]           = useState(false);
   const [showIssueInput, setShowIssueInput] = useState(false);
-  const [issueNotes, setIssueNotes] = useState('');
+  const [issueNotes, setIssueNotes]     = useState('');
+
+  const cfg = statusConfig[job.status];
 
   const handleStatus = async (status: Job['status'], notes?: string) => {
     setLoading(true);
@@ -25,55 +34,77 @@ export default function JobCard({ job, onStatusChange, isCompleted }: JobCardPro
   };
 
   return (
-    <div className={cn(
-      'bg-white rounded-2xl shadow-sm border overflow-hidden transition-all duration-200',
-      isCompleted ? 'border-gray-100 opacity-80' : 'border-gray-200',
-      job.status === 'Issue' && 'border-red-200 bg-red-50/30',
-      job.status === 'CouldNotAccess' && 'border-orange-200 bg-orange-50/30',
-      job.status === 'Done' && 'border-green-200 bg-green-50/20',
-    )}>
-      {/* Card Header */}
+    <div
+      className={cn(
+        'card overflow-hidden transition-all duration-200 animate-fade-up',
+        isCompleted && 'opacity-60',
+      )}
+      style={{ borderLeft: `3px solid ${cfg.accent}` }}
+    >
+      {/* ── Header ────────────────────────────────────────────────── */}
       <div className="p-4">
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          {/* Job order number — large tinted watermark */}
+          <div
+            className="flex-shrink-0 flex items-center justify-center rounded-xl font-display font-800 leading-none"
+            style={{
+              width: 40,
+              height: 40,
+              background: `${cfg.accent}18`,
+              color: cfg.accent,
+              fontSize: '16px',
+              fontWeight: 800,
+              fontFamily: 'var(--font-sora)',
+            }}
+          >
+            {job.jobOrder}
+          </div>
+
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap mb-1">
-              <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
-                #{job.jobOrder}
-              </span>
-              <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-                {job.jobType}
+            <div className="flex items-center gap-2 flex-wrap mb-0.5">
+              <span
+                className="font-display"
+                style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'var(--font-sora)', lineHeight: 1.3 }}
+              >
+                {job.customerName}
               </span>
               {job.callAhead && (
-                <span className="text-xs text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full font-medium">
-                  📞 Call Ahead
+                <span className="badge" style={{ background: 'rgba(139,92,246,0.12)', color: '#7C3AED', fontSize: '10px' }}>
+                  📞 Call
                 </span>
               )}
             </div>
-            <h3 className="font-bold text-gray-900 text-base leading-tight">{job.customerName}</h3>
-            <p className="text-sm text-gray-500 mt-0.5 truncate">{job.address}</p>
+            <p className="text-xs truncate" style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-dm-sans)' }}>
+              {job.address}
+            </p>
+            <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+              <span className="badge" style={{ background: 'var(--surface-subtle)', color: 'var(--text-secondary)', fontSize: '10px', border: '1px solid var(--surface-border)' }}>
+                {job.jobType}
+              </span>
+              <span className={`badge ${cfg.badge}`}>{cfg.label}</span>
+            </div>
           </div>
-          <span className={cn('text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap', statusColor(job.status))}>
-            {statusLabel(job.status)}
-          </span>
         </div>
 
-        {/* Completion time badge */}
+        {/* Completion time */}
         {job.completionTime && (
-          <div className="flex items-center gap-1 mt-2 text-xs text-green-700">
-            <Clock className="w-3 h-3" />
-            <span>Completed at {formatTime(job.completionTime)}</span>
+          <div className="flex items-center gap-1.5 mt-2.5 px-1">
+            <Clock className="w-3 h-3" style={{ color: 'var(--status-done)' }} />
+            <span className="text-xs font-medium" style={{ color: 'var(--status-done)', fontFamily: 'var(--font-dm-sans)' }}>
+              Completed {formatTime(job.completionTime)}
+            </span>
           </div>
         )}
 
-        {/* Quick action buttons */}
+        {/* Quick actions */}
         <div className="flex gap-2 mt-3">
           {job.phone && (
             <a
               href={`tel:${job.phone}`}
-              className="flex-1 flex items-center justify-center gap-1.5 bg-gray-100 text-gray-700 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-200 active:scale-95 transition-all"
+              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold transition-all active:scale-95"
+              style={{ background: 'var(--surface-subtle)', color: 'var(--text-secondary)', border: '1px solid var(--surface-border)', fontFamily: 'var(--font-dm-sans)' }}
             >
-              <Phone className="w-4 h-4" />
-              Call
+              <Phone className="w-3.5 h-3.5" /> Call
             </a>
           )}
           {job.mapLink && (
@@ -81,73 +112,80 @@ export default function JobCard({ job, onStatusChange, isCompleted }: JobCardPro
               href={job.mapLink}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex-1 flex items-center justify-center gap-1.5 bg-blue-50 text-blue-700 py-2.5 rounded-xl text-sm font-medium hover:bg-blue-100 active:scale-95 transition-all"
+              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold transition-all active:scale-95"
+              style={{ background: 'rgba(245,158,11,0.1)', color: 'var(--amber-dark)', border: '1px solid rgba(245,158,11,0.2)', fontFamily: 'var(--font-dm-sans)' }}
             >
-              <MapPin className="w-4 h-4" />
-              Map
+              <MapPin className="w-3.5 h-3.5" /> Map
             </a>
           )}
           <button
             onClick={() => setExpanded(e => !e)}
-            className="px-3 py-2.5 bg-gray-100 text-gray-600 rounded-xl hover:bg-gray-200 active:scale-95 transition-all"
+            className="px-3 py-2.5 rounded-xl transition-all active:scale-95"
+            style={{ background: 'var(--surface-subtle)', color: 'var(--text-tertiary)', border: '1px solid var(--surface-border)' }}
           >
             {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>
         </div>
       </div>
 
-      {/* Expanded details */}
+      {/* ── Expanded details ───────────────────────────────────────── */}
       {expanded && (
-        <div className="border-t border-gray-100 px-4 py-3 space-y-2 bg-gray-50/50">
+        <div className="px-4 pb-4 space-y-2.5" style={{ borderTop: '1px solid var(--surface-border)', paddingTop: '12px' }}>
           {job.items && (
-            <div className="flex gap-2">
-              <Package className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+            <div className="flex gap-2.5 items-start">
+              <Package className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: 'var(--text-tertiary)' }} />
               <div>
-                <p className="text-xs font-medium text-gray-500">Items</p>
-                <p className="text-sm text-gray-800">{job.items}</p>
+                <p className="text-xs font-semibold uppercase tracking-wide mb-0.5" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)', letterSpacing: '0.05em' }}>Items</p>
+                <p className="text-sm" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-dm-sans)' }}>{job.items}</p>
               </div>
             </div>
           )}
           {job.notes && (
-            <div className="bg-yellow-50 border border-yellow-100 rounded-xl px-3 py-2">
-              <p className="text-xs font-medium text-yellow-700 mb-0.5">Notes</p>
-              <p className="text-sm text-yellow-900">{job.notes}</p>
+            <div className="rounded-xl p-3" style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)' }}>
+              <p className="text-xs font-semibold mb-1" style={{ color: 'var(--amber-dark)', fontFamily: 'var(--font-dm-sans)' }}>Notes</p>
+              <p className="text-sm" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-dm-sans)' }}>{job.notes}</p>
             </div>
           )}
           {job.frequency && (
-            <p className="text-xs text-gray-400">Frequency: {job.frequency}</p>
+            <p className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+              Frequency: {job.frequency}
+            </p>
           )}
           {job.issueNotes && (
-            <div className="bg-red-50 border border-red-100 rounded-xl px-3 py-2">
-              <p className="text-xs font-medium text-red-700 mb-0.5">Issue Notes</p>
-              <p className="text-sm text-red-900">{job.issueNotes}</p>
+            <div className="rounded-xl p-3" style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)' }}>
+              <p className="text-xs font-semibold mb-1" style={{ color: '#B91C1C', fontFamily: 'var(--font-dm-sans)' }}>Issue Notes</p>
+              <p className="text-sm" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-dm-sans)' }}>{job.issueNotes}</p>
             </div>
           )}
         </div>
       )}
 
-      {/* Issue notes input */}
+      {/* ── Issue notes input ──────────────────────────────────────── */}
       {showIssueInput && (
-        <div className="border-t border-gray-100 px-4 py-3 bg-red-50/30">
-          <p className="text-sm font-medium text-gray-700 mb-2">Describe the issue:</p>
+        <div className="px-4 py-3" style={{ borderTop: '1px solid var(--surface-border)', background: 'rgba(239,68,68,0.03)' }}>
+          <p className="text-sm font-semibold mb-2" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-dm-sans)' }}>
+            Describe the issue:
+          </p>
           <textarea
             value={issueNotes}
             onChange={e => setIssueNotes(e.target.value)}
-            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-red-300"
+            className="input resize-none"
             rows={3}
             placeholder="What went wrong?"
           />
-          <div className="flex gap-2 mt-2">
+          <div className="flex gap-2 mt-2.5">
             <button
               onClick={() => handleStatus('Issue', issueNotes)}
               disabled={loading}
-              className="flex-1 bg-red-500 text-white py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-all"
+              className="flex-1 py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-all"
+              style={{ background: '#EF4444', color: '#fff', fontFamily: 'var(--font-dm-sans)' }}
             >
-              {loading ? 'Saving...' : 'Submit Issue'}
+              {loading ? 'Saving…' : 'Submit Issue'}
             </button>
             <button
               onClick={() => setShowIssueInput(false)}
-              className="px-4 py-2.5 bg-gray-100 text-gray-600 rounded-xl text-sm font-medium active:scale-95 transition-all"
+              className="px-4 py-2.5 rounded-xl text-sm font-medium active:scale-95 transition-all"
+              style={{ background: 'var(--surface-subtle)', color: 'var(--text-secondary)', border: '1px solid var(--surface-border)', fontFamily: 'var(--font-dm-sans)' }}
             >
               Cancel
             </button>
@@ -155,46 +193,47 @@ export default function JobCard({ job, onStatusChange, isCompleted }: JobCardPro
         </div>
       )}
 
-      {/* Action buttons for pending jobs */}
+      {/* ── Action row (pending only) ──────────────────────────────── */}
       {!isCompleted && job.status === 'Pending' && !showIssueInput && (
-        <div className="border-t border-gray-100 grid grid-cols-3 divide-x divide-gray-100">
-          <button
-            onClick={() => handleStatus('Done')}
-            disabled={loading}
-            className="flex flex-col items-center gap-1 py-3 text-green-700 hover:bg-green-50 active:bg-green-100 transition-colors disabled:opacity-40"
-          >
-            <CheckCircle className="w-5 h-5" />
-            <span className="text-xs font-semibold">Done</span>
-          </button>
-          <button
-            onClick={() => handleStatus('CouldNotAccess')}
-            disabled={loading}
-            className="flex flex-col items-center gap-1 py-3 text-orange-600 hover:bg-orange-50 active:bg-orange-100 transition-colors disabled:opacity-40"
-          >
-            <Lock className="w-5 h-5" />
-            <span className="text-xs font-semibold">No Access</span>
-          </button>
-          <button
-            onClick={() => setShowIssueInput(true)}
-            disabled={loading}
-            className="flex flex-col items-center gap-1 py-3 text-red-600 hover:bg-red-50 active:bg-red-100 transition-colors disabled:opacity-40"
-          >
-            <AlertTriangle className="w-5 h-5" />
-            <span className="text-xs font-semibold">Issue</span>
-          </button>
+        <div className="grid grid-cols-3" style={{ borderTop: '1px solid var(--surface-border)' }}>
+          {[
+            { label: 'Done',      icon: CheckCircle,    status: 'Done' as const,           color: '#059669', bg: 'rgba(16,185,129,0.06)'  },
+            { label: 'No Access', icon: Lock,           status: 'CouldNotAccess' as const, color: '#C2410C', bg: 'rgba(249,115,22,0.06)'  },
+            { label: 'Issue',     icon: AlertTriangle,  status: null,                      color: '#B91C1C', bg: 'rgba(239,68,68,0.06)'   },
+          ].map(({ label, icon: Icon, status, color, bg }, i) => (
+            <button
+              key={label}
+              onClick={() => status ? handleStatus(status) : setShowIssueInput(true)}
+              disabled={loading}
+              className={cn(
+                'flex flex-col items-center gap-1 py-3 text-xs font-semibold transition-all disabled:opacity-40 active:scale-95',
+                i < 2 && 'border-r'
+              )}
+              style={{
+                color,
+                borderColor: 'var(--surface-border)',
+                fontFamily: 'var(--font-dm-sans)',
+              }}
+              onMouseEnter={e => (e.currentTarget.style.background = bg)}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            >
+              <Icon className="w-4.5 h-4.5" style={{ width: 18, height: 18 }} />
+              {label}
+            </button>
+          ))}
         </div>
       )}
 
-      {/* Reopen completed jobs */}
+      {/* ── Reopen ────────────────────────────────────────────────── */}
       {isCompleted && job.status !== 'Pending' && (
-        <div className="border-t border-gray-100 px-4 py-2">
+        <div className="px-4 py-2.5" style={{ borderTop: '1px solid var(--surface-border)' }}>
           <button
             onClick={() => handleStatus('Pending')}
             disabled={loading}
-            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-blue-600 transition-colors disabled:opacity-40"
+            className="flex items-center gap-1.5 text-xs font-medium transition-colors disabled:opacity-40"
+            style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}
           >
-            <RotateCcw className="w-3 h-3" />
-            Reopen job
+            <RotateCcw className="w-3 h-3" /> Reopen job
           </button>
         </div>
       )}

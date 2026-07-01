@@ -1,15 +1,30 @@
 import type { Metadata, Viewport } from 'next';
+import { Sora, DM_Sans } from 'next/font/google';
 import Providers from './providers';
 import '@/styles/globals.css';
 
+const sora = Sora({
+  subsets: ['latin'],
+  variable: '--font-sora',
+  weight: ['400', '500', '600', '700', '800'],
+  display: 'swap',
+});
+
+const dmSans = DM_Sans({
+  subsets: ['latin'],
+  variable: '--font-dm-sans',
+  weight: ['300', '400', '500', '600'],
+  display: 'swap',
+});
+
 export const metadata: Metadata = {
-  title: 'Driver Workflow',
-  description: 'Driver job management system',
+  title: 'Thunderbox',
+  description: 'Driver workflow management',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
-    statusBarStyle: 'default',
-    title: 'Driver Workflow',
+    statusBarStyle: 'black-translucent',
+    title: 'Thunderbox',
   },
 };
 
@@ -18,16 +33,16 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  themeColor: '#2563eb',
+  themeColor: '#0D1117',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" className={`${sora.variable} ${dmSans.variable}`}>
       <head>
         <link rel="apple-touch-icon" href="/icons/icon-192.png" />
       </head>
-      <body className="min-h-screen">
+      <body>
         <Providers>{children}</Providers>
         <script
           dangerouslySetInnerHTML={{
@@ -37,7 +52,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   navigator.serviceWorker.register('/sw.js').catch(console.error);
                 });
               }
-              // Keep screen awake
               if ('wakeLock' in navigator) {
                 async function requestWakeLock() {
                   try { await navigator.wakeLock.request('screen'); } catch(e) {}
