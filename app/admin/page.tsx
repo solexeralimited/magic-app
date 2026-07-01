@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
@@ -7,13 +7,48 @@ import {
   Truck, Play, ArrowRight, AlertTriangle, CheckCircle2, Clock, Lock,
   Send, Bell, List, BarChart3, Loader2, Users, Plus, Trash2, Edit3,
   X, Check, Search, Shield, KeyRound, LogOut, Eye, EyeOff,
+  Upload, Copy, Key, FileUp,
 } from 'lucide-react';
 import Header from '@/components/Header';
 import StatsCard from '@/components/StatsCard';
 import { Job, RunLogEntry, NotificationLog, ApiResponse } from '@/types';
 import { computeStats, statusColor, statusLabel, formatTime, formatDate } from '@/lib/utils';
 
-type Tab = 'dashboard' | 'jobs' | 'drivers' | 'users' | 'history' | 'messages' | 'notifications';
+type Tab = 'dashboard' | 'jobs' | 'drivers' | 'users' | 'history' | 'messages' | 'notifications' | 'import';
+
+interface ApiKeyRecord {
+  id: string;
+  name: string;
+  keyPrefix: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+  isActive: boolean;
+}
+
+// ── CSV parser ───────────────────────────────────────────────────────────────
+function parseCSVLine(line: string): string[] {
+  const result: string[] = [];
+  let cur = '', inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    if (line[i] === '"') {
+      if (inQ && line[i + 1] === '"') { cur += '"'; i++; }
+      else inQ = !inQ;
+    } else if (line[i] === ',' && !inQ) { result.push(cur); cur = ''; }
+    else cur += line[i];
+  }
+  result.push(cur);
+  return result;
+}
+
+function parseCSV(text: string): Record<string, string>[] {
+  const lines = text.trim().split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (lines.length < 2) return [];
+  const headers = parseCSVLine(lines[0]).map(h => h.trim());
+  return lines.slice(1).map(line => {
+    const vals = parseCSVLine(line);
+    return Object.fromEntries(headers.map((h, i) => [h, (vals[i] ?? '').trim()]));
+  });
+}
 
 const DAYS       = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 const FREQUENCIES = ['', 'Fortnightly', '3 Weekly', '4 Weekly'];
@@ -223,6 +258,20 @@ export default function AdminPage() {
   const [driverModal, setDriverModal] = useState<{ open: boolean; driver?: DriverRecord }>({ open: false });
   const [userModal, setUserModal]   = useState<{ open: boolean; user?: AdminUserRecord }>({ open: false });
 
+  // Import tab state
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [csvRows, setCsvRows]         = useState<Record<string, string>[]>([]);
+  const [csvFileName, setCsvFileName] = useState('');
+  const [importMode, setImportMode]   = useState<'append' | 'replace'>('append');
+  const [importing, setImporting]     = useState(false);
+  const [importResult, setImportResult] = useState<{ imported: number; skipped: number; errors: { row: number; field: string; error: string }[] } | null>(null);
+
+  // API key state
+  const [newKeyName, setNewKeyName] = useState('');
+  const [creatingKey, setCreatingKey] = useState(false);
+  const [createdKey, setCreatedKey]   = useState<string | null>(null);
+  const [copied, setCopied]           = useState(false);
+
   if (status === 'loading') return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--shell)' }}>
       <Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--amber)' }} />
@@ -256,6 +305,10 @@ export default function AdminPage() {
 
   const { data: historyData } = useSWR<ApiResponse<RunLogEntry[]>>(tab === 'history' ? '/api/runs/history?days=14' : null, fetcher);
   const { data: notifData }   = useSWR<ApiResponse<NotificationLog[]>>(tab === 'notifications' ? '/api/notifications/log' : null, fetcher);
+  const { data: apiKeysData, mutate: mutateKeys } = useSWR<{ success: boolean; data: ApiKeyRecord[] }>(
+    tab === 'import' ? '/api/api-keys' : null, fetcher
+  );
+  const apiKeys = apiKeysData?.data ?? [];
 
   const stats = computeStats(dailyJobs);
 
@@ -281,6 +334,55 @@ export default function AdminPage() {
   const handleSaveUser   = async (data: Record<string, string>) => { const j = await call(data.id ? 'PUT' : 'POST', '/api/admin/users', data); if (j.success) { mutateUsers(); setUserModal({ open: false }); flash('✓ User saved', true); } else flash(`✗ ${j.error}`, false); };
   const handleDeleteUser = async (id: string) => { if (!confirm('Delete this admin user?')) return; const j = await call('DELETE', '/api/admin/users', { id }); if (j.success) { mutateUsers(); flash('✓ User deleted', true); } else flash(`✗ ${j.error}`, false); };
 
+  const handleFileChange = (file: File | null) => {
+    if (!file) return;
+    setCsvFileName(file.name);
+    setImportResult(null);
+    const reader = new FileReader();
+    reader.onload = e => {
+      const rows = parseCSV(e.target?.result as string);
+      setCsvRows(rows);
+    };
+    reader.readAsText(file);
+  };
+
+  const handleBulkImport = async () => {
+    if (csvRows.length === 0) return;
+    setImporting(true);
+    setImportResult(null);
+    const res = await fetch('/api/jobs/bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jobs: csvRows, mode: importMode }),
+    });
+    const j = await res.json();
+    setImportResult(j);
+    if (j.success && j.imported > 0) { flash(`✓ Imported ${j.imported} jobs`, true); mutateMaster(); }
+    setImporting(false);
+  };
+
+  const handleCreateKey = async () => {
+    if (!newKeyName.trim()) return;
+    setCreatingKey(true);
+    const res = await fetch('/api/api-keys', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newKeyName.trim() }) });
+    const j = await res.json();
+    if (j.success) { setCreatedKey(j.data.key); setNewKeyName(''); mutateKeys(); }
+    else flash(`✗ ${j.error}`, false);
+    setCreatingKey(false);
+  };
+
+  const handleRevokeKey = async (id: string) => {
+    if (!confirm('Revoke this API key? It will stop working immediately.')) return;
+    await fetch('/api/api-keys', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+    mutateKeys();
+    flash('✓ Key revoked', true);
+  };
+
+  const handleCopyKey = () => {
+    if (!createdKey) return;
+    navigator.clipboard.writeText(createdKey).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
+  };
+
   const handleSendMessage = async () => {
     if (!msgText.trim()) return;
     setSending(true);
@@ -298,6 +400,7 @@ export default function AdminPage() {
     { id: 'history',       label: 'History',      icon: Clock     },
     { id: 'messages',      label: 'Message',      icon: Send      },
     { id: 'notifications', label: 'Notif. Log',   icon: Bell      },
+    { id: 'import',        label: 'Import & API', icon: Upload    },
   ];
 
   const issueJobs     = dailyJobs.filter(j => j.status === 'Issue');
@@ -712,11 +815,251 @@ export default function AdminPage() {
           </div>
         )}
 
+        {/* ── IMPORT & API ───────────────────────────────────── */}
+        {tab === 'import' && (<>
+
+          {/* CSV Upload */}
+          <div className="card-shell p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="font-display font-bold" style={{ color: '#fff', fontFamily: 'var(--font-sora)', fontSize: '16px' }}>Bulk Import Jobs</h2>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>Upload a CSV to add jobs to the Master schedule</p>
+              </div>
+              <a
+                href="/api/template/jobs"
+                download
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all"
+                style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: 'var(--amber)', fontFamily: 'var(--font-dm-sans)' }}
+              >
+                <FileUp className="w-3.5 h-3.5" /> Download Template
+              </a>
+            </div>
+
+            {/* Drop zone */}
+            <div
+              onClick={() => fileRef.current?.click()}
+              onDragOver={e => e.preventDefault()}
+              onDrop={e => { e.preventDefault(); handleFileChange(e.dataTransfer.files[0] ?? null); }}
+              className="flex flex-col items-center justify-center gap-2 py-10 rounded-2xl cursor-pointer transition-all"
+              style={{ border: '2px dashed var(--shell-border)', background: 'var(--shell)' }}
+              onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--amber)')}
+              onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--shell-border)')}
+            >
+              <Upload className="w-6 h-6" style={{ color: 'var(--text-tertiary)' }} />
+              <p className="text-sm font-semibold" style={{ color: csvFileName ? '#fff' : 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                {csvFileName || 'Drop CSV here or click to browse'}
+              </p>
+              {csvRows.length > 0 && (
+                <span className="badge badge-done">{csvRows.length} rows loaded</span>
+              )}
+            </div>
+            <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={e => handleFileChange(e.target.files?.[0] ?? null)} />
+
+            {/* Preview table */}
+            {csvRows.length > 0 && (
+              <div className="overflow-x-auto rounded-xl" style={{ border: '1px solid var(--shell-border)' }}>
+                <table className="w-full text-xs" style={{ fontFamily: 'var(--font-dm-sans)' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--shell)', borderBottom: '1px solid var(--shell-border)' }}>
+                      {Object.keys(csvRows[0]).map(h => (
+                        <th key={h} className="px-3 py-2 text-left font-semibold whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {csvRows.slice(0, 5).map((row, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid var(--shell-border)' }}>
+                        {Object.values(row).map((v, j) => (
+                          <td key={j} className="px-3 py-2 whitespace-nowrap" style={{ color: '#fff' }}>{v || '—'}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {csvRows.length > 5 && (
+                  <p className="px-3 py-2 text-xs" style={{ color: 'var(--text-tertiary)', borderTop: '1px solid var(--shell-border)' }}>
+                    + {csvRows.length - 5} more rows
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Import mode */}
+            {csvRows.length > 0 && (
+              <div className="flex gap-3">
+                {(['append', 'replace'] as const).map(m => (
+                  <label key={m} className="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" name="importMode" value={m} checked={importMode === m} onChange={() => setImportMode(m)} className="accent-amber-500" />
+                    <span className="text-sm font-medium" style={{ color: importMode === m ? '#fff' : 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                      {m === 'append' ? 'Append to existing jobs' : 'Replace all Master jobs'}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
+
+            {importMode === 'replace' && csvRows.length > 0 && (
+              <div className="rounded-xl px-4 py-3" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+                <p className="text-xs font-semibold" style={{ color: '#FCA5A5', fontFamily: 'var(--font-dm-sans)' }}>
+                  ⚠️ Replace mode will permanently delete all existing Master jobs before importing.
+                </p>
+              </div>
+            )}
+
+            {csvRows.length > 0 && (
+              <button
+                onClick={handleBulkImport}
+                disabled={importing}
+                className="w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                style={{ background: 'var(--amber)', color: '#000', fontFamily: 'var(--font-dm-sans)' }}
+              >
+                {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                {importing ? 'Importing…' : `Import ${csvRows.length} Jobs`}
+              </button>
+            )}
+
+            {/* Import result */}
+            {importResult && (
+              <div className="rounded-xl p-4 space-y-2" style={{ background: importResult.imported > 0 ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)', border: `1px solid ${importResult.imported > 0 ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}` }}>
+                <p className="text-sm font-semibold" style={{ color: importResult.imported > 0 ? '#34D399' : '#F87171', fontFamily: 'var(--font-dm-sans)' }}>
+                  ✓ {importResult.imported} imported · {importResult.skipped} skipped
+                </p>
+                {importResult.errors.length > 0 && (
+                  <div className="space-y-1 mt-2">
+                    {importResult.errors.slice(0, 10).map((e, i) => (
+                      <p key={i} className="text-xs" style={{ color: '#FCA5A5', fontFamily: 'var(--font-dm-sans)' }}>
+                        Row {e.row}: [{e.field}] {e.error}
+                      </p>
+                    ))}
+                    {importResult.errors.length > 10 && (
+                      <p className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                        + {importResult.errors.length - 10} more errors
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* API Keys */}
+          <div className="card-shell p-5 space-y-4">
+            <div>
+              <h2 className="font-display font-bold flex items-center gap-2" style={{ color: '#fff', fontFamily: 'var(--font-sora)', fontSize: '16px' }}>
+                <Key className="w-4 h-4" style={{ color: 'var(--amber)' }} /> API Integration
+              </h2>
+              <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                Use API keys to import jobs programmatically from any integration
+              </p>
+            </div>
+
+            {/* Endpoint reference */}
+            <div className="rounded-xl p-4 space-y-2" style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)' }}>
+              <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>Endpoint</p>
+              <code className="text-xs block" style={{ color: 'var(--amber)', fontFamily: 'monospace' }}>POST /api/jobs/bulk</code>
+              <code className="text-xs block mt-1" style={{ color: 'var(--text-tertiary)', fontFamily: 'monospace' }}>Authorization: Bearer {'<api-key>'}</code>
+              <code className="text-xs block" style={{ color: 'var(--text-tertiary)', fontFamily: 'monospace' }}>{'{ "mode": "append|replace", "jobs": [...] }'}</code>
+            </div>
+
+            {/* Create key form */}
+            <div className="flex gap-2">
+              <input
+                className={inp}
+                style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: '#fff', flex: 1 }}
+                placeholder="Key name (e.g. Production, Zapier)"
+                value={newKeyName}
+                onChange={e => setNewKeyName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleCreateKey()}
+              />
+              <button
+                onClick={handleCreateKey}
+                disabled={creatingKey || !newKeyName.trim()}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold flex-shrink-0 transition-all disabled:opacity-40"
+                style={{ background: 'var(--amber)', color: '#000', fontFamily: 'var(--font-dm-sans)' }}
+              >
+                {creatingKey ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                Create
+              </button>
+            </div>
+
+            {/* Key list */}
+            <div className="space-y-2">
+              {apiKeys.length === 0 && (
+                <p className="text-sm text-center py-6" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>No API keys yet</p>
+              )}
+              {apiKeys.map(k => (
+                <div key={k.id} className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', opacity: k.isActive ? 1 : 0.4 }}>
+                  <Key className="w-4 h-4 flex-shrink-0" style={{ color: k.isActive ? 'var(--amber)' : 'var(--text-tertiary)' }} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold" style={{ color: '#fff', fontFamily: 'var(--font-dm-sans)' }}>{k.name}</p>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)', fontFamily: 'monospace' }}>{k.keyPrefix}…</p>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                      Created {formatDate(k.createdAt)} · {k.lastUsedAt ? `Last used ${formatDate(k.lastUsedAt)}` : 'Never used'}
+                    </p>
+                  </div>
+                  {k.isActive && (
+                    <button
+                      onClick={() => handleRevokeKey(k.id)}
+                      className="text-xs px-3 py-1.5 rounded-lg font-semibold flex-shrink-0 transition-all"
+                      style={{ background: 'rgba(239,68,68,0.08)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)', fontFamily: 'var(--font-dm-sans)' }}
+                    >
+                      Revoke
+                    </button>
+                  )}
+                  {!k.isActive && (
+                    <span className="badge" style={{ background: 'var(--shell-border)', color: 'var(--text-tertiary)', fontSize: '10px' }}>Revoked</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </>)}
+
       </main>
 
       {jobModal.open    && <JobForm       initial={jobModal.job}    drivers={drivers} onSave={handleSaveJob}  onClose={() => setJobModal({ open: false })} />}
       {driverModal.open && <DriverForm    initial={driverModal.driver}              onSave={handleSaveDriver} onClose={() => setDriverModal({ open: false })} />}
       {userModal.open   && <AdminUserForm initial={userModal.user}                  onSave={handleSaveUser}   onClose={() => setUserModal({ open: false })} />}
+
+      {/* API Key reveal modal */}
+      {createdKey && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}>
+          <div className="w-full max-w-md rounded-2xl p-6 space-y-4 shadow-2xl" style={{ background: 'var(--shell-raised)', border: '1px solid var(--shell-border)' }}>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.3)' }}>
+                <Key className="w-5 h-5" style={{ color: 'var(--amber)' }} />
+              </div>
+              <div>
+                <h3 className="font-display font-bold" style={{ color: '#fff', fontFamily: 'var(--font-sora)', fontSize: '16px' }}>API Key Created</h3>
+                <p className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>Copy it now — it won&apos;t be shown again</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 rounded-xl px-4 py-3" style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)' }}>
+              <code className="flex-1 text-xs break-all" style={{ color: 'var(--amber)', fontFamily: 'monospace' }}>{createdKey}</code>
+              <button
+                onClick={handleCopyKey}
+                className="flex-shrink-0 flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
+                style={{ background: copied ? 'rgba(16,185,129,0.12)' : 'var(--shell-raised)', border: '1px solid var(--shell-border)', color: copied ? '#34D399' : 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}
+              >
+                {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                {copied ? 'Copied' : 'Copy'}
+              </button>
+            </div>
+            <div className="rounded-xl px-4 py-3" style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)' }}>
+              <p className="text-xs" style={{ color: 'var(--amber)', fontFamily: 'var(--font-dm-sans)' }}>
+                Use this key in the <code style={{ fontFamily: 'monospace' }}>Authorization: Bearer</code> header when calling <code style={{ fontFamily: 'monospace' }}>POST /api/jobs/bulk</code>.
+              </p>
+            </div>
+            <button
+              onClick={() => { setCreatedKey(null); setCopied(false); }}
+              className="w-full py-2.5 rounded-xl font-semibold text-sm transition-all"
+              style={{ background: 'var(--amber)', color: '#000', fontFamily: 'var(--font-dm-sans)' }}
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

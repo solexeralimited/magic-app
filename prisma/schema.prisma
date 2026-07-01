@@ -102,3 +102,13 @@ model NotificationLog {
   error     String?
   sentAt    DateTime @default(now())
 }
+
+model ApiKey {
+  id         String    @id @default(cuid())
+  name       String
+  keyHash    String    @unique
+  keyPrefix  String
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  isActive   Boolean   @default(true)
+}
