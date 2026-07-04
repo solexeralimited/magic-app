@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { Phone, MapPin, CheckCircle, AlertTriangle, Lock, ChevronDown, ChevronUp, Clock, Package, RotateCcw } from 'lucide-react';
+import { Phone, MapPin, CheckCircle, AlertTriangle, Lock, Clock, Package, RotateCcw } from 'lucide-react';
 import { Job } from '@/types';
 import { cn, formatTime } from '@/lib/utils';
 
@@ -18,7 +18,6 @@ const statusConfig = {
 };
 
 export default function JobCard({ job, onStatusChange, isCompleted }: JobCardProps) {
-  const [expanded, setExpanded]         = useState(false);
   const [loading, setLoading]           = useState(false);
   const [showIssueInput, setShowIssueInput] = useState(false);
   const [issueNotes, setIssueNotes]     = useState('');
@@ -118,18 +117,11 @@ export default function JobCard({ job, onStatusChange, isCompleted }: JobCardPro
               <MapPin className="w-3.5 h-3.5" /> Map
             </a>
           )}
-          <button
-            onClick={() => setExpanded(e => !e)}
-            className="px-3 py-2.5 rounded-xl transition-all active:scale-95"
-            style={{ background: 'var(--surface-subtle)', color: 'var(--text-tertiary)', border: '1px solid var(--surface-border)' }}
-          >
-            {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-          </button>
         </div>
       </div>
 
-      {/* ── Expanded details ───────────────────────────────────────── */}
-      {expanded && (
+      {/* ── Details (always visible) ───────────────────────────────── */}
+      {(job.items || job.notes || job.frequency || job.issueNotes) && (
         <div className="px-4 pb-4 space-y-2.5" style={{ borderTop: '1px solid var(--surface-border)', paddingTop: '12px' }}>
           {job.items && (
             <div className="flex gap-2.5 items-start">

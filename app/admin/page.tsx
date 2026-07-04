@@ -248,6 +248,7 @@ export default function AdminPage() {
   const [selectedDriver, setSelectedDriver] = useState('');
   const [filterDay, setFilterDay]   = useState('');
   const [search, setSearch]         = useState('');
+  const [dailySearch, setDailySearch] = useState('');
   const [generating, setGenerating] = useState(false);
   const [promoting, setPromoting]   = useState(false);
   const [actionMsg, setActionMsg]   = useState<{ text: string; ok: boolean } | null>(null);
@@ -311,6 +312,11 @@ export default function AdminPage() {
   const apiKeys = apiKeysData?.data ?? [];
 
   const stats = computeStats(dailyJobs);
+  const filteredDailyJobs = dailyJobs.filter(j =>
+    !dailySearch ||
+    j.customerName.toLowerCase().includes(dailySearch.toLowerCase()) ||
+    j.address.toLowerCase().includes(dailySearch.toLowerCase())
+  );
 
   const flash = (text: string, ok: boolean) => {
     setActionMsg({ text, ok });
@@ -544,6 +550,55 @@ export default function AdminPage() {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Today's jobs with search */}
+          {dailyJobs.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between px-1">
+                <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                  Today&apos;s Jobs
+                </p>
+                <span className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                  {filteredDailyJobs.length} / {dailyJobs.length}
+                </span>
+              </div>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: 'var(--text-tertiary)' }} />
+                <input
+                  type="search"
+                  value={dailySearch}
+                  onChange={e => setDailySearch(e.target.value)}
+                  placeholder="Search customer or address…"
+                  className="w-full pl-9 pr-4 py-2.5 rounded-xl text-sm outline-none"
+                  style={{ background: 'var(--shell-raised)', border: '1px solid var(--shell-border)', color: '#fff', fontFamily: 'var(--font-dm-sans)' }}
+                />
+              </div>
+              <div className="space-y-2">
+                {filteredDailyJobs.map(job => (
+                  <div key={job.id} className="card-shell p-3 flex items-center gap-3">
+                    <div
+                      className="flex-shrink-0 flex items-center justify-center rounded-lg text-xs font-bold"
+                      style={{ width: 30, height: 30, background: `${statusColor(job.status)}18`, color: statusColor(job.status), fontFamily: 'var(--font-sora)' }}
+                    >
+                      {job.jobOrder}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold truncate" style={{ color: '#fff', fontFamily: 'var(--font-dm-sans)' }}>{job.customerName}</p>
+                      <p className="text-xs truncate" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>{job.address}</p>
+                    </div>
+                    <span className={`badge ${
+                      job.status === 'Done' ? 'badge-done' : job.status === 'Issue' ? 'badge-issue' : job.status === 'CouldNotAccess' ? 'badge-cant' : 'badge-pending'
+                    }`} style={{ flexShrink: 0, fontSize: '10px' }}>
+                      {statusLabel(job.status)}
+                    </span>
+                  </div>
+                ))}
+                {filteredDailyJobs.length === 0 && (
+                  <p className="text-center text-sm py-6" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>No jobs match search</p>
+                )}
+              </div>
             </div>
           )}
         </>)}

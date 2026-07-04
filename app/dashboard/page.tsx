@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { LogOut, Bell, BellOff, MessageSquare, Loader2, X } from 'lucide-react';
+import { LogOut, Bell, BellOff, MessageSquare, Loader2, X, Search } from 'lucide-react';
 import Header from '@/components/Header';
 import ProgressBar from '@/components/ProgressBar';
 import JobList from '@/components/JobList';
@@ -37,6 +37,7 @@ export default function DashboardPage() {
   const [messages, setMessages]       = useState<AdminMessage[]>([]);
   const [showMessages, setShowMessages] = useState(false);
   const [refreshing, setRefreshing]   = useState(false);
+  const [search, setSearch]           = useState('');
 
   useEffect(() => {
     if (status === 'unauthenticated') router.replace('/login');
@@ -150,6 +151,26 @@ export default function DashboardPage() {
       <ProgressBar completed={completedJobs.length} total={jobs.length} />
 
       <main className="max-w-2xl mx-auto p-4 pb-10">
+        {/* Search */}
+        {jobs.length > 0 && (
+          <div className="relative mb-4">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'var(--text-tertiary)' }} />
+            <input
+              type="search"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search by customer or address…"
+              className="w-full pl-10 pr-4 py-3 rounded-xl text-sm outline-none"
+              style={{
+                background: 'var(--shell-raised)',
+                border: '1px solid var(--shell-border)',
+                color: '#fff',
+                fontFamily: 'var(--font-dm-sans)',
+              }}
+            />
+          </div>
+        )}
+
         {isLoading ? (
           <div className="space-y-3">
             {[1, 2, 3].map(i => (
@@ -157,7 +178,13 @@ export default function DashboardPage() {
             ))}
           </div>
         ) : (
-          <JobList jobs={jobs} onStatusChange={updateJobStatus} />
+          <JobList
+            jobs={search ? jobs.filter(j =>
+              j.customerName.toLowerCase().includes(search.toLowerCase()) ||
+              j.address.toLowerCase().includes(search.toLowerCase())
+            ) : jobs}
+            onStatusChange={updateJobStatus}
+          />
         )}
       </main>
     </div>
