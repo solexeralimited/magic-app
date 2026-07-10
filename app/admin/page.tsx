@@ -341,6 +341,50 @@ export default function AdminPage() {
   const [createdKey, setCreatedKey]   = useState<string | null>(null);
   const [copied, setCopied]           = useState(false);
 
+  // All hooks must come before any early returns (React rules of hooks)
+  const isAdmin = status === 'authenticated' && session?.user.role === 'admin';
+
+  const { data: driversData, mutate: mutateDrivers } = useSWR<{ success: boolean; data: DriverRecord[] }>(isAdmin ? '/api/admin/drivers' : null, fetcher);
+  const drivers = driversData?.data ?? [];
+
+  const { data: adminUsersData, mutate: mutateUsers } = useSWR<{ success: boolean; data: AdminUserRecord[] }>(
+    isAdmin && tab === 'users' ? '/api/admin/users' : null, fetcher
+  );
+  const adminUsers = adminUsersData?.data ?? [];
+
+  const masterQuery = `/api/jobs/master?${selectedDriver ? `driver=${encodeURIComponent(selectedDriver)}` : ''}${filterDay ? `&day=${filterDay}` : ''}`;
+  const { data: masterData, mutate: mutateMaster } = useSWR<ApiResponse<Job[]>>(
+    isAdmin && tab === 'jobs' ? masterQuery : null, fetcher
+  );
+
+  const dailyDriver = selectedDriver || drivers[0]?.name || '';
+  const { data: dailyData, mutate: mutateDaily } = useSWR<ApiResponse<Job[]>>(
+    isAdmin && dailyDriver ? `/api/jobs?driver=${encodeURIComponent(dailyDriver)}` : null,
+    fetcher, { refreshInterval: 15_000 }
+  );
+
+  const { data: historyData } = useSWR<ApiResponse<RunLogEntry[]>>(isAdmin && tab === 'history' ? '/api/runs/history?days=14' : null, fetcher);
+  const { data: notifData }   = useSWR<ApiResponse<NotificationLog[]>>(isAdmin && tab === 'notifications' ? '/api/notifications/log' : null, fetcher);
+  const { data: apiKeysData, mutate: mutateKeys } = useSWR<{ success: boolean; data: ApiKeyRecord[] }>(
+    isAdmin && tab === 'import' ? '/api/api-keys' : null, fetcher
+  );
+  const apiKeys = apiKeysData?.data ?? [];
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+
+  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    setSortableJobs(prev => {
+      const base = prev.length > 0 ? prev : masterJobsRef.current;
+      const oldIdx = base.findIndex(j => j.id === active.id);
+      const newIdx = base.findIndex(j => j.id === over.id);
+      if (oldIdx === -1 || newIdx === -1) return base;
+      return arrayMove(base, oldIdx, newIdx);
+    });
+  }, []);
+
+  // Early returns come after all hooks
   if (status === 'loading') return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--shell)' }}>
       <Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--amber)' }} />
@@ -349,18 +393,6 @@ export default function AdminPage() {
   if (status === 'unauthenticated') { router.replace('/login'); return null; }
   if (session?.user.role !== 'admin') { router.replace('/dashboard'); return null; }
 
-  const { data: driversData, mutate: mutateDrivers } = useSWR<{ success: boolean; data: DriverRecord[] }>('/api/admin/drivers', fetcher);
-  const drivers = driversData?.data ?? [];
-
-  const { data: adminUsersData, mutate: mutateUsers } = useSWR<{ success: boolean; data: AdminUserRecord[] }>(
-    tab === 'users' ? '/api/admin/users' : null, fetcher
-  );
-  const adminUsers = adminUsersData?.data ?? [];
-
-  const masterQuery = `/api/jobs/master?${selectedDriver ? `driver=${encodeURIComponent(selectedDriver)}` : ''}${filterDay ? `&day=${filterDay}` : ''}`;
-  const { data: masterData, mutate: mutateMaster } = useSWR<ApiResponse<Job[]>>(
-    tab === 'jobs' ? masterQuery : null, fetcher
-  );
   const masterJobsRaw = masterData?.data ?? [];
   masterJobsRef.current = masterJobsRaw;
   const masterJobs = masterJobsRaw.filter(j =>
@@ -368,19 +400,7 @@ export default function AdminPage() {
   );
   const displayJobs = search ? masterJobs : sortableJobs.length > 0 ? sortableJobs : masterJobsRaw;
 
-  const dailyDriver = selectedDriver || drivers[0]?.name || '';
-  const { data: dailyData, mutate: mutateDaily } = useSWR<ApiResponse<Job[]>>(
-    dailyDriver ? `/api/jobs?driver=${encodeURIComponent(dailyDriver)}` : null,
-    fetcher, { refreshInterval: 15_000 }
-  );
   const dailyJobs = dailyData?.data ?? [];
-
-  const { data: historyData } = useSWR<ApiResponse<RunLogEntry[]>>(tab === 'history' ? '/api/runs/history?days=14' : null, fetcher);
-  const { data: notifData }   = useSWR<ApiResponse<NotificationLog[]>>(tab === 'notifications' ? '/api/notifications/log' : null, fetcher);
-  const { data: apiKeysData, mutate: mutateKeys } = useSWR<{ success: boolean; data: ApiKeyRecord[] }>(
-    tab === 'import' ? '/api/api-keys' : null, fetcher
-  );
-  const apiKeys = apiKeysData?.data ?? [];
 
   const stats = computeStats(dailyJobs);
   const filteredHistory = (historyData?.data ?? []).filter(e => {
@@ -484,20 +504,6 @@ export default function AdminPage() {
     if (j.success) { setSelectedJobIds(new Set()); setSelectMode(false); mutateDaily(); }
     setReallocating(false);
   };
-
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
-
-  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    setSortableJobs(prev => {
-      const base = prev.length > 0 ? prev : masterJobsRef.current;
-      const oldIdx = base.findIndex(j => j.id === active.id);
-      const newIdx = base.findIndex(j => j.id === over.id);
-      if (oldIdx === -1 || newIdx === -1) return base;
-      return arrayMove(base, oldIdx, newIdx);
-    });
-  }, []);
 
   const handleSaveOrder = async () => {
     const toSave = sortableJobs.length > 0 ? sortableJobs : masterJobsRef.current;
