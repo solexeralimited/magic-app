@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { LogOut, Bell, BellOff, MessageSquare, Loader2, X } from 'lucide-react';
+import { LogOut, Bell, BellOff, MessageSquare, Loader2, X, Search } from 'lucide-react';
 import Header from '@/components/Header';
 import ProgressBar from '@/components/ProgressBar';
 import JobList from '@/components/JobList';
@@ -32,11 +32,13 @@ export default function DashboardPage() {
   const { data: session, status } = useSession();
   const driverName = session?.user?.name ?? null;
 
-  const { jobs, activeJobs, completedJobs, isLoading, mutate, updateJobStatus } = useJobs(driverName);
+  const { jobs, activeJobs, completedJobs, isLoading, mutate, updateJobStatus, tomorrowJobs, tomorrowLoading } = useJobs(driverName);
   const { permission, subscribe } = usePushNotifications(driverName);
   const [messages, setMessages]       = useState<AdminMessage[]>([]);
   const [showMessages, setShowMessages] = useState(false);
   const [refreshing, setRefreshing]   = useState(false);
+  const [search, setSearch]           = useState('');
+  const [activeTab, setActiveTab]     = useState<'today' | 'tomorrow'>('today');
 
   useEffect(() => {
     if (status === 'unauthenticated') router.replace('/login');
@@ -149,15 +151,101 @@ export default function DashboardPage() {
 
       <ProgressBar completed={completedJobs.length} total={jobs.length} />
 
+      {/* Tab switcher */}
+      <div style={{ borderBottom: '1px solid var(--shell-border)' }}>
+        <div className="max-w-2xl mx-auto px-4 flex gap-1 pt-2">
+          {(['today', 'tomorrow'] as const).map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className="relative px-4 py-2 text-sm font-semibold transition-colors"
+              style={{
+                fontFamily: 'var(--font-dm-sans)',
+                color: activeTab === tab ? 'var(--amber)' : 'var(--text-tertiary)',
+                background: 'transparent',
+                border: 'none',
+              }}
+            >
+              {tab === 'today' ? "Today's Run" : "Tomorrow"}
+              {tab === 'tomorrow' && tomorrowJobs.length > 0 && (
+                <span
+                  className="ml-1.5 rounded-full px-1.5 py-0.5 text-xs font-bold"
+                  style={{ background: 'rgba(245,158,11,0.15)', color: 'var(--amber)', fontSize: '10px' }}
+                >
+                  {tomorrowJobs.length}
+                </span>
+              )}
+              {activeTab === tab && (
+                <span
+                  className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full"
+                  style={{ background: 'var(--amber)' }}
+                />
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <main className="max-w-2xl mx-auto p-4 pb-10">
-        {isLoading ? (
-          <div className="space-y-3">
-            {[1, 2, 3].map(i => (
-              <div key={i} className="skeleton h-36" />
-            ))}
-          </div>
+        {activeTab === 'today' ? (
+          <>
+            {/* Search */}
+            {jobs.length > 0 && (
+              <div className="relative mb-4">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'var(--text-tertiary)' }} />
+                <input
+                  type="search"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Search by customer or address…"
+                  className="w-full pl-10 pr-4 py-3 rounded-xl text-sm outline-none"
+                  style={{
+                    background: 'var(--shell-raised)',
+                    border: '1px solid var(--shell-border)',
+                    color: '#fff',
+                    fontFamily: 'var(--font-dm-sans)',
+                  }}
+                />
+              </div>
+            )}
+
+            {isLoading ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="skeleton h-36" />
+                ))}
+              </div>
+            ) : (
+              <JobList
+                jobs={search ? jobs.filter(j =>
+                  j.customerName.toLowerCase().includes(search.toLowerCase()) ||
+                  j.address.toLowerCase().includes(search.toLowerCase())
+                ) : jobs}
+                onStatusChange={updateJobStatus}
+              />
+            )}
+          </>
         ) : (
-          <JobList jobs={jobs} onStatusChange={updateJobStatus} />
+          <>
+            <p className="text-xs mb-4" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+              Read-only preview of tomorrow&apos;s scheduled jobs.
+            </p>
+            {tomorrowLoading ? (
+              <div className="space-y-3">
+                {[1, 2].map(i => (
+                  <div key={i} className="skeleton h-36" />
+                ))}
+              </div>
+            ) : (
+              <JobList
+                jobs={tomorrowJobs}
+                onStatusChange={updateJobStatus}
+                readOnly
+                emptyMessage="Nothing scheduled yet"
+                emptySubMessage="The office hasn't generated tomorrow's run yet"
+              />
+            )}
+          </>
         )}
       </main>
     </div>

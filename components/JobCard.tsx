@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { Phone, MapPin, CheckCircle, AlertTriangle, Lock, ChevronDown, ChevronUp, Clock, Package, RotateCcw } from 'lucide-react';
+import { Phone, MapPin, CheckCircle, AlertTriangle, Lock, Clock, Package, RotateCcw } from 'lucide-react';
 import { Job } from '@/types';
 import { cn, formatTime } from '@/lib/utils';
 
@@ -8,22 +8,30 @@ interface JobCardProps {
   job: Job;
   onStatusChange: (id: string, status: Job['status'], notes?: string) => Promise<boolean>;
   isCompleted?: boolean;
+  readOnly?: boolean;
 }
 
 const statusConfig = {
-  Pending:        { label: 'Pending',         accent: 'var(--status-pending)', badge: 'badge-pending' },
-  Done:           { label: 'Done',            accent: 'var(--status-done)',    badge: 'badge-done'    },
-  Issue:          { label: 'Issue',           accent: 'var(--status-issue)',   badge: 'badge-issue'   },
-  CouldNotAccess: { label: 'No Access',       accent: 'var(--status-cant)',    badge: 'badge-cant'    },
+  Pending:        { label: 'Pending',   accent: 'var(--status-pending)', badge: 'badge-pending' },
+  Done:           { label: 'Done',      accent: 'var(--status-done)',    badge: 'badge-done'    },
+  Issue:          { label: 'Issue',     accent: 'var(--status-issue)',   badge: 'badge-issue'   },
+  CouldNotAccess: { label: 'No Access', accent: 'var(--status-cant)',    badge: 'badge-cant'    },
 };
 
-export default function JobCard({ job, onStatusChange, isCompleted }: JobCardProps) {
-  const [expanded, setExpanded]         = useState(false);
+const jobTypeColors: Record<string, { border: string; bg: string }> = {
+  'Service':  { border: '#059669', bg: 'rgba(5,150,105,0.04)'  },
+  'Delivery': { border: '#D97706', bg: 'rgba(217,119,6,0.04)'  },
+  'Pickup':   { border: '#DC2626', bg: 'rgba(220,38,38,0.04)'  },
+  'Adhoc':    { border: '#EA580C', bg: 'rgba(234,88,12,0.04)'  },
+};
+
+export default function JobCard({ job, onStatusChange, isCompleted, readOnly }: JobCardProps) {
   const [loading, setLoading]           = useState(false);
   const [showIssueInput, setShowIssueInput] = useState(false);
   const [issueNotes, setIssueNotes]     = useState('');
 
   const cfg = statusConfig[job.status];
+  const typeColor = jobTypeColors[job.jobType] ?? { border: cfg.accent, bg: 'transparent' };
 
   const handleStatus = async (status: Job['status'], notes?: string) => {
     setLoading(true);
@@ -39,7 +47,7 @@ export default function JobCard({ job, onStatusChange, isCompleted }: JobCardPro
         'card overflow-hidden transition-all duration-200 animate-fade-up',
         isCompleted && 'opacity-60',
       )}
-      style={{ borderLeft: `3px solid ${cfg.accent}` }}
+      style={{ borderLeft: `3px solid ${typeColor.border}`, background: typeColor.bg }}
     >
       {/* ── Header ────────────────────────────────────────────────── */}
       <div className="p-4">
@@ -66,7 +74,7 @@ export default function JobCard({ job, onStatusChange, isCompleted }: JobCardPro
                 className="font-display"
                 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'var(--font-sora)', lineHeight: 1.3 }}
               >
-                {job.customerName}
+                {job.address}
               </span>
               {job.callAhead && (
                 <span className="badge" style={{ background: 'rgba(139,92,246,0.12)', color: '#7C3AED', fontSize: '10px' }}>
@@ -75,7 +83,7 @@ export default function JobCard({ job, onStatusChange, isCompleted }: JobCardPro
               )}
             </div>
             <p className="text-xs truncate" style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-dm-sans)' }}>
-              {job.address}
+              {job.customerName}
             </p>
             <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
               <span className="badge" style={{ background: 'var(--surface-subtle)', color: 'var(--text-secondary)', fontSize: '10px', border: '1px solid var(--surface-border)' }}>
@@ -107,29 +115,25 @@ export default function JobCard({ job, onStatusChange, isCompleted }: JobCardPro
               <Phone className="w-3.5 h-3.5" /> Call
             </a>
           )}
-          {job.mapLink && (
+          {(job.mapLink || job.address) && (
             <a
-              href={job.mapLink}
+              href={job.mapLink || `https://maps.google.com/?q=${encodeURIComponent(job.address)}`}
               target="_blank"
               rel="noopener noreferrer"
               className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold transition-all active:scale-95"
-              style={{ background: 'rgba(245,158,11,0.1)', color: 'var(--amber-dark)', border: '1px solid rgba(245,158,11,0.2)', fontFamily: 'var(--font-dm-sans)' }}
+              style={job.mapLink
+                ? { background: 'rgba(245,158,11,0.1)', color: 'var(--amber-dark)', border: '1px solid rgba(245,158,11,0.2)', fontFamily: 'var(--font-dm-sans)' }
+                : { background: 'var(--surface-subtle)', color: 'var(--text-secondary)', border: '1px solid var(--surface-border)', fontFamily: 'var(--font-dm-sans)' }
+              }
             >
               <MapPin className="w-3.5 h-3.5" /> Map
             </a>
           )}
-          <button
-            onClick={() => setExpanded(e => !e)}
-            className="px-3 py-2.5 rounded-xl transition-all active:scale-95"
-            style={{ background: 'var(--surface-subtle)', color: 'var(--text-tertiary)', border: '1px solid var(--surface-border)' }}
-          >
-            {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-          </button>
         </div>
       </div>
 
-      {/* ── Expanded details ───────────────────────────────────────── */}
-      {expanded && (
+      {/* ── Details (always visible) ───────────────────────────────── */}
+      {(job.items || job.notes || job.frequency || job.issueNotes) && (
         <div className="px-4 pb-4 space-y-2.5" style={{ borderTop: '1px solid var(--surface-border)', paddingTop: '12px' }}>
           {job.items && (
             <div className="flex gap-2.5 items-start">
@@ -161,7 +165,7 @@ export default function JobCard({ job, onStatusChange, isCompleted }: JobCardPro
       )}
 
       {/* ── Issue notes input ──────────────────────────────────────── */}
-      {showIssueInput && (
+      {!readOnly && showIssueInput && (
         <div className="px-4 py-3" style={{ borderTop: '1px solid var(--surface-border)', background: 'rgba(239,68,68,0.03)' }}>
           <p className="text-sm font-semibold mb-2" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-dm-sans)' }}>
             Describe the issue:
@@ -194,7 +198,7 @@ export default function JobCard({ job, onStatusChange, isCompleted }: JobCardPro
       )}
 
       {/* ── Action row (pending only) ──────────────────────────────── */}
-      {!isCompleted && job.status === 'Pending' && !showIssueInput && (
+      {!readOnly && !isCompleted && job.status === 'Pending' && !showIssueInput && (
         <div className="grid grid-cols-3" style={{ borderTop: '1px solid var(--surface-border)' }}>
           {[
             { label: 'Done',      icon: CheckCircle,    status: 'Done' as const,           color: '#059669', bg: 'rgba(16,185,129,0.06)'  },
@@ -225,7 +229,7 @@ export default function JobCard({ job, onStatusChange, isCompleted }: JobCardPro
       )}
 
       {/* ── Reopen ────────────────────────────────────────────────── */}
-      {isCompleted && job.status !== 'Pending' && (
+      {!readOnly && isCompleted && job.status !== 'Pending' && (
         <div className="px-4 py-2.5" style={{ borderTop: '1px solid var(--surface-border)' }}>
           <button
             onClick={() => handleStatus('Pending')}
