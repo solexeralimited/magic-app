@@ -8,7 +8,13 @@ export function useJobs(driverName: string | null) {
   const { data, error, isLoading, mutate } = useSWR<ApiResponse<Job[]>>(
     driverName ? `/api/jobs?driver=${encodeURIComponent(driverName)}` : null,
     fetcher,
-    { refreshInterval: 30_000 } // poll every 30s
+    { refreshInterval: 30_000 }
+  );
+
+  const { data: tomorrowData, isLoading: tomorrowLoading } = useSWR<ApiResponse<Job[]>>(
+    driverName ? `/api/jobs?driver=${encodeURIComponent(driverName)}&type=tomorrow` : null,
+    fetcher,
+    { refreshInterval: 60_000 }
   );
 
   const updateJobStatus = async (
@@ -43,6 +49,7 @@ export function useJobs(driverName: string | null) {
   const jobs = data?.data ?? [];
   const activeJobs = jobs.filter(j => j.status === 'Pending');
   const completedJobs = jobs.filter(j => j.status !== 'Pending');
+  const tomorrowJobs = tomorrowData?.data ?? [];
 
-  return { jobs, activeJobs, completedJobs, isLoading, error, mutate, updateJobStatus };
+  return { jobs, activeJobs, completedJobs, isLoading, error, mutate, updateJobStatus, tomorrowJobs, tomorrowLoading };
 }

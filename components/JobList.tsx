@@ -7,9 +7,12 @@ import { ClipboardList, ChevronDown, ChevronUp } from 'lucide-react';
 interface JobListProps {
   jobs: Job[];
   onStatusChange: (id: string, status: Job['status'], notes?: string) => Promise<boolean>;
+  readOnly?: boolean;
+  emptyMessage?: string;
+  emptySubMessage?: string;
 }
 
-export default function JobList({ jobs, onStatusChange }: JobListProps) {
+export default function JobList({ jobs, onStatusChange, readOnly, emptyMessage, emptySubMessage }: JobListProps) {
   const [showCompleted, setShowCompleted] = useState(false);
 
   const active    = jobs.filter(j => j.status === 'Pending');
@@ -25,10 +28,10 @@ export default function JobList({ jobs, onStatusChange }: JobListProps) {
           <ClipboardList className="w-7 h-7" style={{ color: 'var(--text-tertiary)' }} />
         </div>
         <p className="font-display font-semibold" style={{ color: 'var(--text-inverse)', fontSize: '16px', fontFamily: 'var(--font-sora)' }}>
-          No jobs today
+          {emptyMessage ?? 'No jobs today'}
         </p>
         <p className="text-sm mt-1" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
-          Check back later or contact the office
+          {emptySubMessage ?? 'Check back later or contact the office'}
         </p>
       </div>
     );
@@ -41,7 +44,7 @@ export default function JobList({ jobs, onStatusChange }: JobListProps) {
         <div className="space-y-3">
           {active.map((job, i) => (
             <div key={job.id} style={{ animationDelay: `${i * 0.05}s` }}>
-              <JobCard job={job} onStatusChange={onStatusChange} />
+              <JobCard job={job} onStatusChange={onStatusChange} readOnly={readOnly} />
             </div>
           ))}
         </div>

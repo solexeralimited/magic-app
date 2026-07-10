@@ -58,6 +58,14 @@ export async function getDailyRunJobs(driverName: string): Promise<Job[]> {
   return rows.map(toJob);
 }
 
+export async function getTomorrowRunJobs(driverName: string): Promise<Job[]> {
+  const rows = await prisma.job.findMany({
+    where: { driverName, runType: 'Tomorrow' },
+    orderBy: { jobOrder: 'asc' },
+  });
+  return rows.map(toJob);
+}
+
 export async function updateJobStatus(
   jobId: string,
   status: Job['status'],
