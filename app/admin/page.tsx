@@ -315,6 +315,7 @@ export default function AdminPage() {
   const [reallocating, setReallocating]   = useState(false);
   // Sortable jobs for drag-and-drop
   const [sortableJobs, setSortableJobs]   = useState<Job[]>([]);
+  const masterJobsRef                     = useRef<Job[]>([]);
   const [reordering, setReordering]       = useState(false);
   const [generating, setGenerating] = useState(false);
   const [promoting, setPromoting]   = useState(false);
@@ -361,12 +362,11 @@ export default function AdminPage() {
     tab === 'jobs' ? masterQuery : null, fetcher
   );
   const masterJobsRaw = masterData?.data ?? [];
+  masterJobsRef.current = masterJobsRaw;
   const masterJobs = masterJobsRaw.filter(j =>
     !search || j.customerName.toLowerCase().includes(search.toLowerCase()) || j.address.toLowerCase().includes(search.toLowerCase())
   );
-  // Sync sortable list when master jobs load
-  if (sortableJobs.length === 0 && masterJobsRaw.length > 0) setSortableJobs(masterJobsRaw);
-  const displayJobs = search ? masterJobs : sortableJobs.length > 0 ? sortableJobs : masterJobs;
+  const displayJobs = search ? masterJobs : sortableJobs.length > 0 ? sortableJobs : masterJobsRaw;
 
   const dailyDriver = selectedDriver || drivers[0]?.name || '';
   const { data: dailyData, mutate: mutateDaily } = useSWR<ApiResponse<Job[]>>(
@@ -491,18 +491,22 @@ export default function AdminPage() {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     setSortableJobs(prev => {
-      const oldIdx = prev.findIndex(j => j.id === active.id);
-      const newIdx = prev.findIndex(j => j.id === over.id);
-      return arrayMove(prev, oldIdx, newIdx);
+      const base = prev.length > 0 ? prev : masterJobsRef.current;
+      const oldIdx = base.findIndex(j => j.id === active.id);
+      const newIdx = base.findIndex(j => j.id === over.id);
+      if (oldIdx === -1 || newIdx === -1) return base;
+      return arrayMove(base, oldIdx, newIdx);
     });
   }, []);
 
   const handleSaveOrder = async () => {
+    const toSave = sortableJobs.length > 0 ? sortableJobs : masterJobsRef.current;
+    if (toSave.length === 0) return;
     setReordering(true);
-    const updates = sortableJobs.map((j, i) => ({ id: j.id, jobOrder: i + 1 }));
+    const updates = toSave.map((j, i) => ({ id: j.id, jobOrder: i + 1 }));
     const j = await call('PATCH', '/api/jobs/master', { action: 'reorder', jobs: updates });
     flash(j.success ? '✓ Order saved' : `✗ ${j.error}`, j.success);
-    if (j.success) mutateMaster();
+    if (j.success) { setSortableJobs([]); mutateMaster(); }
     setReordering(false);
   };
 
@@ -788,7 +792,7 @@ export default function AdminPage() {
             </p>
           </div>
 
-          {!search && sortableJobs.length > 0 && (
+          {!search && displayJobs.length > 0 && (
             <div className="flex items-center justify-between px-1">
               <p className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>Drag rows to reorder</p>
               <button
