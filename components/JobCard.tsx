@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { Phone, MapPin, CheckCircle, AlertTriangle, Lock, Clock, Package, RotateCcw } from 'lucide-react';
+import { Phone, MapPin, CheckCircle, AlertTriangle, Lock, Clock, Package, RotateCcw, Hash } from 'lucide-react';
 import { Job } from '@/types';
 import { cn, formatTime } from '@/lib/utils';
 
@@ -18,11 +18,11 @@ const statusConfig = {
   CouldNotAccess: { label: 'No Access', accent: 'var(--status-cant)',    badge: 'badge-cant'    },
 };
 
-const jobTypeColors: Record<string, { border: string; bg: string }> = {
-  'Service':  { border: '#059669', bg: 'rgba(5,150,105,0.04)'  },
-  'Delivery': { border: '#D97706', bg: 'rgba(217,119,6,0.04)'  },
-  'Pickup':   { border: '#DC2626', bg: 'rgba(220,38,38,0.04)'  },
-  'Adhoc':    { border: '#EA580C', bg: 'rgba(234,88,12,0.04)'  },
+const jobTypeColors: Record<string, { border: string; bg: string; text: string }> = {
+  'Service':  { border: '#059669', bg: '#ecfdf5', text: '#065f46' },
+  'Delivery': { border: '#D97706', bg: '#fffbeb', text: '#78350f' },
+  'Pickup':   { border: '#DC2626', bg: '#fef2f2', text: '#7f1d1d' },
+  'Adhoc':    { border: '#EA580C', bg: '#fff7ed', text: '#7c2d12' },
 };
 
 export default function JobCard({ job, onStatusChange, isCompleted, readOnly }: JobCardProps) {
@@ -31,7 +31,7 @@ export default function JobCard({ job, onStatusChange, isCompleted, readOnly }: 
   const [issueNotes, setIssueNotes]     = useState('');
 
   const cfg = statusConfig[job.status];
-  const typeColor = jobTypeColors[job.jobType] ?? { border: cfg.accent, bg: 'transparent' };
+  const typeColor = jobTypeColors[job.jobType] ?? { border: cfg.accent, bg: '#ffffff', text: 'var(--text-secondary)' };
 
   const handleStatus = async (status: Job['status'], notes?: string) => {
     setLoading(true);
@@ -86,7 +86,7 @@ export default function JobCard({ job, onStatusChange, isCompleted, readOnly }: 
               {job.customerName}
             </p>
             <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-              <span className="badge" style={{ background: 'var(--surface-subtle)', color: 'var(--text-secondary)', fontSize: '10px', border: '1px solid var(--surface-border)' }}>
+              <span className="badge" style={{ background: typeColor.border + '20', color: typeColor.border, fontSize: '10px', border: `1px solid ${typeColor.border}40` }}>
                 {job.jobType}
               </span>
               <span className={`badge ${cfg.badge}`}>{cfg.label}</span>
@@ -133,7 +133,7 @@ export default function JobCard({ job, onStatusChange, isCompleted, readOnly }: 
       </div>
 
       {/* ── Details (always visible) ───────────────────────────────── */}
-      {(job.items || job.notes || job.frequency || job.issueNotes) && (
+      {(job.items || job.quantity || job.notes || job.frequency || job.issueNotes) && (
         <div className="px-4 pb-4 space-y-2.5" style={{ borderTop: '1px solid var(--surface-border)', paddingTop: '12px' }}>
           {job.items && (
             <div className="flex gap-2.5 items-start">
@@ -141,6 +141,15 @@ export default function JobCard({ job, onStatusChange, isCompleted, readOnly }: 
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide mb-0.5" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)', letterSpacing: '0.05em' }}>Items</p>
                 <p className="text-sm" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-dm-sans)' }}>{job.items}</p>
+              </div>
+            </div>
+          )}
+          {job.quantity && (
+            <div className="flex gap-2.5 items-start">
+              <Hash className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: 'var(--text-tertiary)' }} />
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide mb-0.5" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)', letterSpacing: '0.05em' }}>Qty</p>
+                <p className="text-sm" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-dm-sans)' }}>{job.quantity}</p>
               </div>
             </div>
           )}
