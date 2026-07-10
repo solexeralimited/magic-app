@@ -39,6 +39,7 @@ model Job {
   address                String    @default("")
   phone                  String    @default("")
   items                  String    @default("")
+  quantity               String    @default("")
   notes                  String    @default("")
   frequency              String    @default("")
   nextServiceDate        String    @default("")

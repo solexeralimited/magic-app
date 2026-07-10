@@ -1,13 +1,20 @@
 'use client';
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import {
+  DndContext, closestCenter, PointerSensor, useSensor, useSensors, DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext, verticalListSortingStrategy, useSortable, arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import {
   Truck, Play, ArrowRight, AlertTriangle, CheckCircle2, Clock, Lock,
-  Send, Bell, List, BarChart3, Loader2, Users, Plus, Trash2, Edit3,
+  Send, Bell, List, BarChart3, Loader2, Plus, Trash2, Edit3,
   X, Check, Search, Shield, KeyRound, LogOut, Eye, EyeOff,
-  Upload, Copy, Key, FileUp,
+  Upload, Copy, Key, FileUp, GripVertical, Users2,
 } from 'lucide-react';
 import Header from '@/components/Header';
 import StatsCard from '@/components/StatsCard';
@@ -96,6 +103,7 @@ function JobForm({ initial, drivers, onSave, onClose }: {
     address: initial?.address ?? '',
     phone: initial?.phone ?? '',
     items: initial?.items ?? '',
+    quantity: (initial as Job & { quantity?: string })?.quantity ?? '',
     notes: initial?.notes ?? '',
     frequency: initial?.frequency ?? '',
     nextServiceDate: initial?.nextServiceDate ?? '',
@@ -137,8 +145,10 @@ function JobForm({ initial, drivers, onSave, onClose }: {
             <input className={inp} type="tel" value={form.phone} onChange={e => set('phone', e.target.value)} /></div>
           <div><label className={lbl}>Next Service Date</label>
             <input className={inp} type="date" value={form.nextServiceDate} onChange={e => set('nextServiceDate', e.target.value)} /></div>
-          <div className="col-span-2"><label className={lbl}>Items / Unit Type</label>
+          <div><label className={lbl}>Items / Unit Type</label>
             <input className={inp} value={form.items} onChange={e => set('items', e.target.value)} /></div>
+          <div><label className={lbl}>Quantity</label>
+            <input className={inp} value={form.quantity} onChange={e => set('quantity', e.target.value)} placeholder="e.g. 3 bins" /></div>
           <div className="col-span-2"><label className={lbl}>Notes</label>
             <textarea className={inp} rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} /></div>
           <div className="col-span-2"><label className={lbl}>Map Link</label>
@@ -240,6 +250,50 @@ function AdminUserForm({ initial, onSave, onClose }: {
   );
 }
 
+// ── Sortable Job Item ─────────────────────────────────────────────────────────
+function SortableJobItem({ job, onEdit, onDelete }: { job: Job; onEdit: () => void; onDelete: () => void }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: job.id });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1, position: 'relative', zIndex: isDragging ? 999 : undefined }}
+      className="card p-4 flex items-start gap-3"
+    >
+      <button
+        {...attributes}
+        {...listeners}
+        className="flex-shrink-0 flex items-center justify-center rounded-lg cursor-grab active:cursor-grabbing mt-0.5 touch-none"
+        style={{ width: 28, height: 28, background: 'var(--surface-subtle)', color: 'var(--text-tertiary)', border: '1px solid var(--surface-border)' }}
+      >
+        <GripVertical className="w-3.5 h-3.5" />
+      </button>
+      <div className="flex-shrink-0 flex items-center justify-center rounded-xl font-display font-bold text-sm"
+        style={{ width: 36, height: 36, background: 'rgba(245,158,11,0.1)', color: 'var(--amber)', fontFamily: 'var(--font-sora)' }}>
+        {job.jobOrder}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex flex-wrap gap-1 mb-1">
+          <span className="badge" style={{ background: 'rgba(139,92,246,0.1)', color: '#7C3AED', fontSize: '10px' }}>{job.driverName}</span>
+          <span className="badge" style={{ background: 'var(--surface-subtle)', color: 'var(--text-secondary)', border: '1px solid var(--surface-border)', fontSize: '10px' }}>{job.day}</span>
+          <span className="badge" style={{ background: 'var(--surface-subtle)', color: 'var(--text-secondary)', border: '1px solid var(--surface-border)', fontSize: '10px' }}>{job.jobType}</span>
+          {job.frequency && <span className="badge badge-pending">{job.frequency}</span>}
+          {job.callAhead && <span className="badge" style={{ background: 'rgba(236,72,153,0.1)', color: '#BE185D', fontSize: '10px' }}>📞 Call</span>}
+        </div>
+        <p className="font-semibold text-sm" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-dm-sans)' }}>{job.customerName}</p>
+        <p className="text-xs truncate mt-0.5" style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-dm-sans)' }}>{job.address}</p>
+      </div>
+      <div className="flex gap-1.5 flex-shrink-0">
+        <button onClick={onEdit} className="w-8 h-8 flex items-center justify-center rounded-lg transition-all" style={{ background: 'var(--surface-subtle)', color: 'var(--text-secondary)', border: '1px solid var(--surface-border)' }}>
+          <Edit3 className="w-3.5 h-3.5" />
+        </button>
+        <button onClick={onDelete} className="w-8 h-8 flex items-center justify-center rounded-lg transition-all" style={{ background: 'rgba(239,68,68,0.06)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.15)' }}>
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Admin Page ───────────────────────────────────────────────────────────
 export default function AdminPage() {
   const router = useRouter();
@@ -249,6 +303,20 @@ export default function AdminPage() {
   const [filterDay, setFilterDay]   = useState('');
   const [search, setSearch]         = useState('');
   const [dailySearch, setDailySearch] = useState('');
+  // History filters
+  const [histSearch, setHistSearch]       = useState('');
+  const [histDriver, setHistDriver]       = useState('');
+  const [histStatus, setHistStatus]       = useState('');
+  const [histJobType, setHistJobType]     = useState('');
+  // Reallocation
+  const [selectMode, setSelectMode]       = useState(false);
+  const [selectedJobIds, setSelectedJobIds] = useState<Set<string>>(new Set());
+  const [reallocDriver, setReallocDriver] = useState('');
+  const [reallocating, setReallocating]   = useState(false);
+  // Sortable jobs for drag-and-drop
+  const [sortableJobs, setSortableJobs]   = useState<Job[]>([]);
+  const masterJobsRef                     = useRef<Job[]>([]);
+  const [reordering, setReordering]       = useState(false);
   const [generating, setGenerating] = useState(false);
   const [promoting, setPromoting]   = useState(false);
   const [actionMsg, setActionMsg]   = useState<{ text: string; ok: boolean } | null>(null);
@@ -293,9 +361,12 @@ export default function AdminPage() {
   const { data: masterData, mutate: mutateMaster } = useSWR<ApiResponse<Job[]>>(
     tab === 'jobs' ? masterQuery : null, fetcher
   );
-  const masterJobs = (masterData?.data ?? []).filter(j =>
+  const masterJobsRaw = masterData?.data ?? [];
+  masterJobsRef.current = masterJobsRaw;
+  const masterJobs = masterJobsRaw.filter(j =>
     !search || j.customerName.toLowerCase().includes(search.toLowerCase()) || j.address.toLowerCase().includes(search.toLowerCase())
   );
+  const displayJobs = search ? masterJobs : sortableJobs.length > 0 ? sortableJobs : masterJobsRaw;
 
   const dailyDriver = selectedDriver || drivers[0]?.name || '';
   const { data: dailyData, mutate: mutateDaily } = useSWR<ApiResponse<Job[]>>(
@@ -312,6 +383,13 @@ export default function AdminPage() {
   const apiKeys = apiKeysData?.data ?? [];
 
   const stats = computeStats(dailyJobs);
+  const filteredHistory = (historyData?.data ?? []).filter(e => {
+    if (histSearch && !e.customerName.toLowerCase().includes(histSearch.toLowerCase()) && !e.address.toLowerCase().includes(histSearch.toLowerCase())) return false;
+    if (histDriver && e.driverName !== histDriver) return false;
+    if (histStatus && e.status !== histStatus) return false;
+    if (histJobType && e.jobType !== histJobType) return false;
+    return true;
+  });
   const filteredDailyJobs = dailyJobs.filter(j =>
     !dailySearch ||
     j.customerName.toLowerCase().includes(dailySearch.toLowerCase()) ||
@@ -331,8 +409,8 @@ export default function AdminPage() {
   const handleGenerate = async () => { setGenerating(true); const j = await call('POST', '/api/runs/generate', { adminOverride: true }); flash(j.success ? `✓ Generated ${j.data.count} jobs for tomorrow` : `✗ ${j.error}`, j.success); setGenerating(false); };
   const handlePromote  = async () => { setPromoting(true);  const j = await call('POST', '/api/runs/promote',  { adminOverride: true }); flash(j.success ? `✓ Promoted ${j.data.count} jobs` : `✗ ${j.error}`, j.success); if (j.success) mutateDaily(); setPromoting(false); };
 
-  const handleSaveJob    = async (data: Record<string, unknown>) => { await call(data.id ? 'PUT' : 'POST', '/api/jobs/master', data); mutateMaster(); setJobModal({ open: false }); };
-  const handleDeleteJob  = async (id: string) => { if (!confirm('Delete this job?')) return; await call('DELETE', '/api/jobs/master', { id }); mutateMaster(); };
+  const handleSaveJob    = async (data: Record<string, unknown>) => { await call(data.id ? 'PUT' : 'POST', '/api/jobs/master', data); setSortableJobs([]); mutateMaster(); setJobModal({ open: false }); };
+  const handleDeleteJob  = async (id: string) => { if (!confirm('Delete this job?')) return; await call('DELETE', '/api/jobs/master', { id }); setSortableJobs([]); mutateMaster(); };
 
   const handleSaveDriver       = async (data: Record<string, unknown>) => { const j = await call(data.id ? 'PUT' : 'POST', '/api/admin/drivers', data); if (j.success) { mutateDrivers(); setDriverModal({ open: false }); flash('✓ Driver saved', true); } else flash(`✗ ${j.error}`, false); };
   const handleDeactivateDriver = async (id: string, name: string) => { if (!confirm(`Deactivate ${name}?`)) return; await call('DELETE', '/api/admin/drivers', { id }); mutateDrivers(); flash(`✓ ${name} deactivated`, true); };
@@ -396,6 +474,40 @@ export default function AdminPage() {
     flash(j.success ? '✓ Message sent' : `✗ ${j.error}`, j.success);
     if (j.success) setMsgText('');
     setSending(false);
+  };
+
+  const handleReallocate = async () => {
+    if (!reallocDriver || selectedJobIds.size === 0) return;
+    setReallocating(true);
+    const j = await call('PATCH', '/api/jobs', { jobIds: [...selectedJobIds], driverName: reallocDriver });
+    flash(j.success ? `✓ Reallocated ${selectedJobIds.size} job(s) to ${reallocDriver}` : `✗ ${j.error}`, j.success);
+    if (j.success) { setSelectedJobIds(new Set()); setSelectMode(false); mutateDaily(); }
+    setReallocating(false);
+  };
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+
+  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    setSortableJobs(prev => {
+      const base = prev.length > 0 ? prev : masterJobsRef.current;
+      const oldIdx = base.findIndex(j => j.id === active.id);
+      const newIdx = base.findIndex(j => j.id === over.id);
+      if (oldIdx === -1 || newIdx === -1) return base;
+      return arrayMove(base, oldIdx, newIdx);
+    });
+  }, []);
+
+  const handleSaveOrder = async () => {
+    const toSave = sortableJobs.length > 0 ? sortableJobs : masterJobsRef.current;
+    if (toSave.length === 0) return;
+    setReordering(true);
+    const updates = toSave.map((j, i) => ({ id: j.id, jobOrder: i + 1 }));
+    const j = await call('PATCH', '/api/jobs/master', { action: 'reorder', jobs: updates });
+    flash(j.success ? '✓ Order saved' : `✗ ${j.error}`, j.success);
+    if (j.success) { setSortableJobs([]); mutateMaster(); }
+    setReordering(false);
   };
 
   const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
@@ -553,16 +665,31 @@ export default function AdminPage() {
             </div>
           )}
 
-          {/* Today's jobs with search */}
+          {/* Today's jobs with search + reallocation */}
           {dailyJobs.length > 0 && (
             <div className="space-y-3">
               <div className="flex items-center justify-between px-1">
                 <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
                   Today&apos;s Jobs
                 </p>
-                <span className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
-                  {filteredDailyJobs.length} / {dailyJobs.length}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                    {filteredDailyJobs.length} / {dailyJobs.length}
+                  </span>
+                  <button
+                    onClick={() => { setSelectMode(s => !s); setSelectedJobIds(new Set()); }}
+                    className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all"
+                    style={{
+                      background: selectMode ? 'rgba(245,158,11,0.15)' : 'var(--shell-border)',
+                      color: selectMode ? 'var(--amber)' : 'var(--text-tertiary)',
+                      border: selectMode ? '1px solid rgba(245,158,11,0.3)' : '1px solid transparent',
+                      fontFamily: 'var(--font-dm-sans)',
+                    }}
+                  >
+                    <Users2 className="w-3 h-3" />
+                    {selectMode ? 'Cancel' : 'Reassign'}
+                  </button>
+                </div>
               </div>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: 'var(--text-tertiary)' }} />
@@ -575,26 +702,51 @@ export default function AdminPage() {
                   style={{ background: 'var(--shell-raised)', border: '1px solid var(--shell-border)', color: '#fff', fontFamily: 'var(--font-dm-sans)' }}
                 />
               </div>
+              {selectMode && (
+                <p className="text-xs px-1" style={{ color: 'var(--amber)', fontFamily: 'var(--font-dm-sans)' }}>
+                  {selectedJobIds.size > 0 ? `${selectedJobIds.size} selected — pick a driver below` : 'Tap jobs to select for reassignment'}
+                </p>
+              )}
               <div className="space-y-2">
-                {filteredDailyJobs.map(job => (
-                  <div key={job.id} className="card-shell p-3 flex items-center gap-3">
+                {filteredDailyJobs.map(job => {
+                  const isSelected = selectedJobIds.has(job.id);
+                  return (
                     <div
-                      className="flex-shrink-0 flex items-center justify-center rounded-lg text-xs font-bold"
-                      style={{ width: 30, height: 30, background: `${statusColor(job.status)}18`, color: statusColor(job.status), fontFamily: 'var(--font-sora)' }}
+                      key={job.id}
+                      className="card-shell p-3 flex items-center gap-3 transition-all"
+                      style={{ cursor: selectMode ? 'pointer' : undefined, outline: isSelected ? '2px solid var(--amber)' : undefined, outlineOffset: '-2px' }}
+                      onClick={selectMode ? () => setSelectedJobIds(prev => {
+                        const next = new Set(prev);
+                        if (next.has(job.id)) next.delete(job.id); else next.add(job.id);
+                        return next;
+                      }) : undefined}
                     >
-                      {job.jobOrder}
+                      {selectMode && (
+                        <div
+                          className="flex-shrink-0 flex items-center justify-center rounded-md transition-all"
+                          style={{ width: 20, height: 20, background: isSelected ? 'var(--amber)' : 'var(--shell-raised)', border: `1.5px solid ${isSelected ? 'var(--amber)' : 'var(--shell-border)'}` }}
+                        >
+                          {isSelected && <Check className="w-3 h-3" style={{ color: '#000' }} />}
+                        </div>
+                      )}
+                      <div
+                        className="flex-shrink-0 flex items-center justify-center rounded-lg text-xs font-bold"
+                        style={{ width: 30, height: 30, background: `${statusColor(job.status)}18`, color: statusColor(job.status), fontFamily: 'var(--font-sora)' }}
+                      >
+                        {job.jobOrder}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold truncate" style={{ color: '#fff', fontFamily: 'var(--font-dm-sans)' }}>{job.customerName}</p>
+                        <p className="text-xs truncate" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>{job.address} · {job.driverName}</p>
+                      </div>
+                      <span className={`badge ${
+                        job.status === 'Done' ? 'badge-done' : job.status === 'Issue' ? 'badge-issue' : job.status === 'CouldNotAccess' ? 'badge-cant' : 'badge-pending'
+                      }`} style={{ flexShrink: 0, fontSize: '10px' }}>
+                        {statusLabel(job.status)}
+                      </span>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold truncate" style={{ color: '#fff', fontFamily: 'var(--font-dm-sans)' }}>{job.customerName}</p>
-                      <p className="text-xs truncate" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>{job.address}</p>
-                    </div>
-                    <span className={`badge ${
-                      job.status === 'Done' ? 'badge-done' : job.status === 'Issue' ? 'badge-issue' : job.status === 'CouldNotAccess' ? 'badge-cant' : 'badge-pending'
-                    }`} style={{ flexShrink: 0, fontSize: '10px' }}>
-                      {statusLabel(job.status)}
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
                 {filteredDailyJobs.length === 0 && (
                   <p className="text-center text-sm py-6" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>No jobs match search</p>
                 )}
@@ -640,43 +792,41 @@ export default function AdminPage() {
             </p>
           </div>
 
-          <div className="space-y-2">
-            {masterJobs.map(job => (
-              <div key={job.id} className="card p-4 flex items-start gap-3">
-                <div
-                  className="flex-shrink-0 flex items-center justify-center rounded-xl font-display font-bold text-sm"
-                  style={{ width: 36, height: 36, background: 'rgba(245,158,11,0.1)', color: 'var(--amber)', fontFamily: 'var(--font-sora)' }}
-                >
-                  {job.jobOrder}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex flex-wrap gap-1 mb-1">
-                    <span className="badge" style={{ background: 'rgba(139,92,246,0.1)', color: '#7C3AED', fontSize: '10px' }}>{job.driverName}</span>
-                    <span className="badge" style={{ background: 'var(--surface-subtle)', color: 'var(--text-secondary)', border: '1px solid var(--surface-border)', fontSize: '10px' }}>{job.day}</span>
-                    <span className="badge" style={{ background: 'var(--surface-subtle)', color: 'var(--text-secondary)', border: '1px solid var(--surface-border)', fontSize: '10px' }}>{job.jobType}</span>
-                    {job.frequency && <span className="badge badge-pending">{job.frequency}</span>}
-                    {job.callAhead && <span className="badge" style={{ background: 'rgba(236,72,153,0.1)', color: '#BE185D', fontSize: '10px' }}>📞 Call</span>}
+          {!search && displayJobs.length > 0 && (
+            <div className="flex items-center justify-between px-1">
+              <p className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>Drag rows to reorder</p>
+              <button
+                onClick={handleSaveOrder}
+                disabled={reordering}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-40"
+                style={{ background: 'rgba(16,185,129,0.1)', color: '#34D399', border: '1px solid rgba(16,185,129,0.2)', fontFamily: 'var(--font-dm-sans)' }}
+              >
+                {reordering ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                Save Order
+              </button>
+            </div>
+          )}
+
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={displayJobs.map(j => j.id)} strategy={verticalListSortingStrategy}>
+              <div className="space-y-2">
+                {displayJobs.map(job => (
+                  <SortableJobItem
+                    key={job.id}
+                    job={job}
+                    onEdit={() => setJobModal({ open: true, job })}
+                    onDelete={() => handleDeleteJob(job.id)}
+                  />
+                ))}
+                {displayJobs.length === 0 && (
+                  <div className="text-center py-16" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                    <List className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                    <p className="text-sm">No jobs found</p>
                   </div>
-                  <p className="font-semibold text-sm" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-dm-sans)' }}>{job.customerName}</p>
-                  <p className="text-xs truncate mt-0.5" style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-dm-sans)' }}>{job.address}</p>
-                </div>
-                <div className="flex gap-1.5 flex-shrink-0">
-                  <button onClick={() => setJobModal({ open: true, job })} className="w-8 h-8 flex items-center justify-center rounded-lg transition-all" style={{ background: 'var(--surface-subtle)', color: 'var(--text-secondary)', border: '1px solid var(--surface-border)' }}>
-                    <Edit3 className="w-3.5 h-3.5" />
-                  </button>
-                  <button onClick={() => handleDeleteJob(job.id)} className="w-8 h-8 flex items-center justify-center rounded-lg transition-all" style={{ background: 'rgba(239,68,68,0.06)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.15)' }}>
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
+                )}
               </div>
-            ))}
-            {masterJobs.length === 0 && (
-              <div className="text-center py-16" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
-                <List className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                <p className="text-sm">No jobs found</p>
-              </div>
-            )}
-          </div>
+            </SortableContext>
+          </DndContext>
         </>)}
 
         {/* ── DRIVERS ────────────────────────────────────────────── */}
@@ -782,30 +932,70 @@ export default function AdminPage() {
 
         {/* ── HISTORY ────────────────────────────────────────────── */}
         {tab === 'history' && (
-          <div className="space-y-2.5">
-            <p className="text-xs px-1" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>Last 14 days</p>
-            {(historyData?.data ?? []).length === 0 && (
-              <div className="text-center py-16" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
-                <Clock className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                <p className="text-sm">No history yet</p>
+          <div className="space-y-3">
+            <div className="card-shell p-4 space-y-3">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: 'var(--text-tertiary)' }} />
+                <input
+                  type="search"
+                  value={histSearch}
+                  onChange={e => setHistSearch(e.target.value)}
+                  placeholder="Search customer or address…"
+                  className="w-full pl-9 pr-4 py-2.5 rounded-xl text-sm outline-none"
+                  style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: '#fff', fontFamily: 'var(--font-dm-sans)' }}
+                />
               </div>
-            )}
-            {(historyData?.data ?? []).map(entry => (
-              <div key={entry.id} className="card-shell p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-semibold text-sm" style={{ color: '#fff', fontFamily: 'var(--font-dm-sans)' }}>{entry.customerName}</p>
-                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>{entry.address}</p>
-                    <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>{entry.driverName} · {formatDate(entry.date)}</p>
-                  </div>
-                  <span className={`badge ${
-                    entry.status === 'Done' ? 'badge-done' : entry.status === 'Issue' ? 'badge-issue' : entry.status === 'CouldNotAccess' ? 'badge-cant' : 'badge-pending'
-                  }`}>
-                    {statusLabel(entry.status)}
-                  </span>
+              <div className="grid grid-cols-3 gap-2">
+                <select value={histDriver} onChange={e => setHistDriver(e.target.value)} className={inp} style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: '#fff' }}>
+                  <option value="">All Drivers</option>
+                  {drivers.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+                </select>
+                <select value={histStatus} onChange={e => setHistStatus(e.target.value)} className={inp} style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: '#fff' }}>
+                  <option value="">All Statuses</option>
+                  <option value="Done">Done</option>
+                  <option value="Issue">Issue</option>
+                  <option value="CouldNotAccess">No Access</option>
+                </select>
+                <select value={histJobType} onChange={e => setHistJobType(e.target.value)} className={inp} style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: '#fff' }}>
+                  <option value="">All Types</option>
+                  {JOB_TYPES.map(t => <option key={t}>{t}</option>)}
+                </select>
+              </div>
+              <p className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                {filteredHistory.length} of {(historyData?.data ?? []).length} entries · Last 14 days
+              </p>
+            </div>
+            <div className="space-y-2">
+              {filteredHistory.length === 0 && (
+                <div className="text-center py-16" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                  <Clock className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">{(historyData?.data ?? []).length === 0 ? 'No history yet' : 'No entries match filters'}</p>
                 </div>
-              </div>
-            ))}
+              )}
+              {filteredHistory.map(entry => (
+                <div key={entry.id} className="card-shell p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm" style={{ color: '#fff', fontFamily: 'var(--font-dm-sans)' }}>{entry.customerName}</p>
+                      <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>{entry.address}</p>
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        <span className="badge" style={{ background: 'rgba(139,92,246,0.1)', color: '#7C3AED', fontSize: '10px' }}>{entry.driverName}</span>
+                        <span className="badge" style={{ background: 'var(--shell-border)', color: 'var(--text-tertiary)', fontSize: '10px' }}>{entry.jobType}</span>
+                        <span className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>{formatDate(entry.date)}</span>
+                      </div>
+                      {entry.issueNotes && (
+                        <p className="text-xs mt-1" style={{ color: '#FCA5A5', fontFamily: 'var(--font-dm-sans)' }}>{entry.issueNotes}</p>
+                      )}
+                    </div>
+                    <span className={`badge flex-shrink-0 ${
+                      entry.status === 'Done' ? 'badge-done' : entry.status === 'Issue' ? 'badge-issue' : entry.status === 'CouldNotAccess' ? 'badge-cant' : 'badge-pending'
+                    }`}>
+                      {statusLabel(entry.status)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -1071,6 +1261,32 @@ export default function AdminPage() {
         </>)}
 
       </main>
+
+      {/* Sticky reallocation bar */}
+      {selectMode && selectedJobIds.size > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 z-40 p-4" style={{ background: 'var(--shell-raised)', borderTop: '1px solid var(--shell-border)', backdropFilter: 'blur(8px)' }}>
+          <div className="max-w-5xl mx-auto flex items-center gap-3">
+            <select
+              value={reallocDriver}
+              onChange={e => setReallocDriver(e.target.value)}
+              className={`${inp} flex-1`}
+              style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: '#fff' }}
+            >
+              <option value="">Select driver to reassign to…</option>
+              {drivers.filter(d => d.isActive).map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+            </select>
+            <button
+              onClick={handleReallocate}
+              disabled={reallocating || !reallocDriver}
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-50 flex-shrink-0"
+              style={{ background: 'var(--amber)', color: '#000', fontFamily: 'var(--font-dm-sans)' }}
+            >
+              {reallocating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Users2 className="w-4 h-4" />}
+              Reassign {selectedJobIds.size}
+            </button>
+          </div>
+        </div>
+      )}
 
       {jobModal.open    && <JobForm       initial={jobModal.job}    drivers={drivers} onSave={handleSaveJob}  onClose={() => setJobModal({ open: false })} />}
       {driverModal.open && <DriverForm    initial={driverModal.driver}              onSave={handleSaveDriver} onClose={() => setDriverModal({ open: false })} />}

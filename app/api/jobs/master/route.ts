@@ -32,6 +32,7 @@ export async function POST(req: NextRequest) {
         address: body.address || '',
         phone: body.phone || '',
         items: body.items || '',
+        quantity: body.quantity || '',
         notes: body.notes || '',
         frequency: body.frequency || '',
         nextServiceDate: body.nextServiceDate || '',
@@ -62,6 +63,7 @@ export async function PUT(req: NextRequest) {
         address: data.address || '',
         phone: data.phone || '',
         items: data.items || '',
+        quantity: data.quantity || '',
         notes: data.notes || '',
         frequency: data.frequency || '',
         nextServiceDate: data.nextServiceDate || '',
@@ -70,6 +72,22 @@ export async function PUT(req: NextRequest) {
       },
     });
     return NextResponse.json({ success: true, data: job });
+  } catch (err) {
+    return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
+  }
+}
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const body = await req.json();
+    if (body.action === 'reorder') {
+      const updates = body.jobs as { id: string; jobOrder: number }[];
+      await Promise.all(
+        updates.map(u => prisma.job.update({ where: { id: u.id }, data: { jobOrder: u.jobOrder } }))
+      );
+      return NextResponse.json({ success: true });
+    }
+    return NextResponse.json({ success: false, error: 'Unknown action' }, { status: 400 });
   } catch (err) {
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
   }

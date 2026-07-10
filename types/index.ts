@@ -21,6 +21,7 @@ export interface Job {
   address: string;
   phone: string;
   items: string;
+  quantity: string;
   notes: string;
   frequency: JobFrequency;
   nextServiceDate: string; // ISO date string
