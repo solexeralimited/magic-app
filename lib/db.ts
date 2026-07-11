@@ -16,7 +16,7 @@ function toJob(p: NonNullable<PrismaJob>): Job {
     address: p.address,
     phone: p.phone,
     items: p.items,
-    quantity: (p as Record<string, unknown>).quantity as string ?? '',
+    quantity: p.quantity ?? '',
     notes: p.notes,
     frequency: p.frequency as Job['frequency'],
     nextServiceDate: p.nextServiceDate,
