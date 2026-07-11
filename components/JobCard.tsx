@@ -12,10 +12,10 @@ interface JobCardProps {
 }
 
 const statusConfig = {
-  Pending:        { label: 'Pending',   accent: 'var(--status-pending)', badge: 'badge-pending' },
-  Done:           { label: 'Done',      accent: 'var(--status-done)',    badge: 'badge-done'    },
-  Issue:          { label: 'Issue',     accent: 'var(--status-issue)',   badge: 'badge-issue'   },
-  CouldNotAccess: { label: 'No Access', accent: 'var(--status-cant)',    badge: 'badge-cant'    },
+  Pending:        { label: 'Pending',   accent: '#F59E0B', badge: 'badge-pending' },
+  Done:           { label: 'Done',      accent: '#10B981', badge: 'badge-done'    },
+  Issue:          { label: 'Issue',     accent: '#EF4444', badge: 'badge-issue'   },
+  CouldNotAccess: { label: 'No Access', accent: '#F97316', badge: 'badge-cant'    },
 };
 
 const jobTypeColors: Record<string, { border: string; bg: string; text: string }> = {
