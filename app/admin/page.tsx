@@ -14,7 +14,7 @@ import {
   Truck, Play, ArrowRight, AlertTriangle, CheckCircle2, Clock, Lock,
   Send, Bell, List, BarChart3, Loader2, Plus, Trash2, Edit3,
   X, Check, Search, Shield, KeyRound, LogOut, Eye, EyeOff,
-  Upload, Copy, Key, FileUp, GripVertical, Users2,
+  Upload, Copy, Key, FileUp, GripVertical, Users2, LayoutGrid, Table2,
 } from 'lucide-react';
 import Header from '@/components/Header';
 import StatsCard from '@/components/StatsCard';
@@ -317,6 +317,7 @@ export default function AdminPage() {
   const [sortableJobs, setSortableJobs]   = useState<Job[]>([]);
   const masterJobsRef                     = useRef<Job[]>([]);
   const [reordering, setReordering]       = useState(false);
+  const [jobView, setJobView]             = useState<'card' | 'sheet'>('card');
   const [generating, setGenerating] = useState(false);
   const [promoting, setPromoting]   = useState(false);
   const [actionMsg, setActionMsg]   = useState<{ text: string; ok: boolean } | null>(null);
@@ -900,46 +901,147 @@ export default function AdminPage() {
                 {DAYS.map(d => <option key={d}>{d}</option>)}
               </select>
             </div>
-            <p className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
-              {masterJobs.length} jobs
-            </p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                {masterJobs.length} jobs
+              </p>
+              <div className="flex items-center gap-1 rounded-lg p-0.5" style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)' }}>
+                <button
+                  onClick={() => setJobView('card')}
+                  className="flex items-center justify-center w-7 h-7 rounded-md transition-all"
+                  style={{ background: jobView === 'card' ? 'var(--amber)' : 'transparent', color: jobView === 'card' ? '#000' : 'var(--text-tertiary)' }}
+                  title="Card view"
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => setJobView('sheet')}
+                  className="flex items-center justify-center w-7 h-7 rounded-md transition-all"
+                  style={{ background: jobView === 'sheet' ? 'var(--amber)' : 'transparent', color: jobView === 'sheet' ? '#000' : 'var(--text-tertiary)' }}
+                  title="Sheet view"
+                >
+                  <Table2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
           </div>
 
-          {!search && displayJobs.length > 0 && (
-            <div className="flex items-center justify-between px-1">
-              <p className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>Drag rows to reorder</p>
-              <button
-                onClick={handleSaveOrder}
-                disabled={reordering}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-40"
-                style={{ background: 'rgba(16,185,129,0.1)', color: '#34D399', border: '1px solid rgba(16,185,129,0.2)', fontFamily: 'var(--font-dm-sans)' }}
-              >
-                {reordering ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
-                Save Order
-              </button>
+          {jobView === 'card' && (<>
+            {!search && displayJobs.length > 0 && (
+              <div className="flex items-center justify-between px-1">
+                <p className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>Drag rows to reorder</p>
+                <button
+                  onClick={handleSaveOrder}
+                  disabled={reordering}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-40"
+                  style={{ background: 'rgba(16,185,129,0.1)', color: '#34D399', border: '1px solid rgba(16,185,129,0.2)', fontFamily: 'var(--font-dm-sans)' }}
+                >
+                  {reordering ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                  Save Order
+                </button>
+              </div>
+            )}
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={displayJobs.map(j => j.id)} strategy={verticalListSortingStrategy}>
+                <div className="space-y-2">
+                  {displayJobs.map(job => (
+                    <SortableJobItem
+                      key={job.id}
+                      job={job}
+                      onEdit={() => setJobModal({ open: true, job })}
+                      onDelete={() => handleDeleteJob(job.id)}
+                    />
+                  ))}
+                  {displayJobs.length === 0 && (
+                    <div className="text-center py-16" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                      <List className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                      <p className="text-sm">No jobs found</p>
+                    </div>
+                  )}
+                </div>
+              </SortableContext>
+            </DndContext>
+          </>)}
+
+          {jobView === 'sheet' && (
+            <div className="card-shell overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs" style={{ fontFamily: 'var(--font-dm-sans)', borderCollapse: 'collapse', minWidth: 640 }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--shell-border)', background: 'var(--shell-raised)' }}>
+                      {['#', 'Customer', 'Address', 'Driver', 'Day', 'Type', 'Freq', 'Phone', ''].map(h => (
+                        <th
+                          key={h}
+                          className="text-left px-3 py-2.5 font-semibold uppercase tracking-wider"
+                          style={{ color: 'var(--text-tertiary)', fontSize: '10px', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}
+                        >
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {displayJobs.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} className="text-center py-12" style={{ color: 'var(--text-tertiary)' }}>No jobs found</td>
+                      </tr>
+                    ) : displayJobs.map((job, i) => (
+                      <tr
+                        key={job.id}
+                        style={{
+                          borderBottom: i < displayJobs.length - 1 ? '1px solid var(--shell-border)' : undefined,
+                          background: i % 2 === 1 ? 'rgba(255,255,255,0.015)' : undefined,
+                        }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(245,158,11,0.04)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = i % 2 === 1 ? 'rgba(255,255,255,0.015)' : '')}
+                      >
+                        <td className="px-3 py-2.5 font-mono font-bold" style={{ color: 'var(--amber)', fontVariantNumeric: 'tabular-nums', fontSize: '11px' }}>
+                          {job.jobOrder}
+                        </td>
+                        <td className="px-3 py-2.5 font-semibold max-w-[140px]" style={{ color: '#fff' }}>
+                          <span className="block truncate">{job.customerName}</span>
+                        </td>
+                        <td className="px-3 py-2.5 max-w-[160px]" style={{ color: 'var(--text-tertiary)' }}>
+                          <span className="block truncate">{job.address}</span>
+                        </td>
+                        <td className="px-3 py-2.5" style={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{job.driverName}</td>
+                        <td className="px-3 py-2.5" style={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{job.day}</td>
+                        <td className="px-3 py-2.5" style={{ whiteSpace: 'nowrap' }}>
+                          <span className="badge" style={{ background: 'var(--shell-border)', color: 'var(--text-secondary)', fontSize: '10px' }}>{job.jobType}</span>
+                        </td>
+                        <td className="px-3 py-2.5" style={{ color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>{job.frequency || '—'}</td>
+                        <td className="px-3 py-2.5" style={{ color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                          {job.phone ? (
+                            <a href={`tel:${job.phone}`} style={{ color: 'var(--amber)' }}>{job.phone}</a>
+                          ) : '—'}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <div className="flex items-center gap-1.5 justify-end">
+                            <button
+                              onClick={() => setJobModal({ open: true, job })}
+                              className="flex items-center justify-center w-6 h-6 rounded-md transition-all"
+                              style={{ background: 'var(--shell-raised)', color: 'var(--text-tertiary)', border: '1px solid var(--shell-border)' }}
+                              title="Edit"
+                            >
+                              <Edit3 className="w-3 h-3" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteJob(job.id)}
+                              className="flex items-center justify-center w-6 h-6 rounded-md transition-all"
+                              style={{ background: 'rgba(239,68,68,0.08)', color: '#F87171', border: '1px solid rgba(239,68,68,0.15)' }}
+                              title="Delete"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
-
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-            <SortableContext items={displayJobs.map(j => j.id)} strategy={verticalListSortingStrategy}>
-              <div className="space-y-2">
-                {displayJobs.map(job => (
-                  <SortableJobItem
-                    key={job.id}
-                    job={job}
-                    onEdit={() => setJobModal({ open: true, job })}
-                    onDelete={() => handleDeleteJob(job.id)}
-                  />
-                ))}
-                {displayJobs.length === 0 && (
-                  <div className="text-center py-16" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
-                    <List className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                    <p className="text-sm">No jobs found</p>
-                  </div>
-                )}
-              </div>
-            </SortableContext>
-          </DndContext>
         </>)}
 
         {/* ── DRIVERS ────────────────────────────────────────────── */}
