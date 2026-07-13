@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import Header from '@/components/Header';
 import StatsCard from '@/components/StatsCard';
-import { Job, RunLogEntry, NotificationLog, ApiResponse } from '@/types';
+import { Job, RunLogEntry, NotificationLog, AdminMessage, ApiResponse } from '@/types';
 import { computeStats, statusColor, statusLabel, formatTime, formatDate } from '@/lib/utils';
 
 type Tab = 'dashboard' | 'jobs' | 'drivers' | 'users' | 'history' | 'messages' | 'notifications' | 'import';
@@ -380,6 +380,7 @@ export default function AdminPage() {
 
   const { data: historyData } = useSWR<ApiResponse<RunLogEntry[]>>(isAdmin && tab === 'history' ? '/api/runs/history?days=14' : null, fetcher);
   const { data: notifData }   = useSWR<ApiResponse<NotificationLog[]>>(isAdmin && tab === 'notifications' ? '/api/notifications/log' : null, fetcher);
+  const { data: sentMsgsData, mutate: mutateSentMsgs } = useSWR<ApiResponse<AdminMessage[]>>(isAdmin && tab === 'messages' ? '/api/admin/messages' : null, fetcher);
   const { data: apiKeysData, mutate: mutateKeys } = useSWR<{ success: boolean; data: ApiKeyRecord[] }>(
     isAdmin && tab === 'import' ? '/api/api-keys' : null, fetcher
   );
@@ -537,7 +538,7 @@ export default function AdminPage() {
     setSending(true);
     const j = await call('POST', '/api/notifications/send', { to: msgTo, title: '📬 Message from Office', body: msgText, message: msgText });
     flash(j.success ? '✓ Message sent' : `✗ ${j.error}`, j.success);
-    if (j.success) setMsgText('');
+    if (j.success) { setMsgText(''); mutateSentMsgs(); }
     setSending(false);
   };
 
@@ -1354,7 +1355,7 @@ export default function AdminPage() {
         )}
 
         {/* ── MESSAGES ───────────────────────────────────────────── */}
-        {tab === 'messages' && (
+        {tab === 'messages' && (<>
           <div className="card-shell p-5">
             <h2 className="font-display font-bold mb-4 flex items-center gap-2" style={{ color: '#fff', fontFamily: 'var(--font-sora)', fontSize: '16px' }}>
               <Send className="w-4 h-4" style={{ color: 'var(--amber)' }} />
@@ -1390,7 +1391,36 @@ export default function AdminPage() {
               </button>
             </div>
           </div>
-        )}
+
+          {/* Sent messages history */}
+          {(sentMsgsData?.data ?? []).length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-widest px-1" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                Recent Messages
+              </p>
+              {(sentMsgsData?.data ?? []).map(msg => (
+                <div key={msg.id} className="card-shell p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="badge" style={{ background: 'rgba(139,92,246,0.1)', color: '#7C3AED', fontSize: '10px' }}>
+                          → {msg.to === 'all' ? 'All Drivers' : msg.to}
+                        </span>
+                        {msg.readAt && (
+                          <span className="badge badge-done" style={{ fontSize: '10px' }}>Read</span>
+                        )}
+                      </div>
+                      <p className="text-sm" style={{ color: '#fff', fontFamily: 'var(--font-dm-sans)' }}>{msg.message}</p>
+                    </div>
+                    <p className="text-xs flex-shrink-0" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                      {formatTime(msg.sentAt)}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>)}
 
         {/* ── NOTIFICATION LOG ───────────────────────────────────── */}
         {tab === 'notifications' && (
