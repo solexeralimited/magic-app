@@ -14,11 +14,11 @@ import {
   Truck, Play, ArrowRight, AlertTriangle, CheckCircle2, Clock, Lock,
   Send, Bell, List, BarChart3, Loader2, Plus, Trash2, Edit3,
   X, Check, Search, Shield, KeyRound, LogOut, Eye, EyeOff,
-  Upload, Copy, Key, FileUp, GripVertical, Users2,
+  Upload, Copy, Key, FileUp, GripVertical, Users2, LayoutGrid, Table2, Download,
 } from 'lucide-react';
 import Header from '@/components/Header';
 import StatsCard from '@/components/StatsCard';
-import { Job, RunLogEntry, NotificationLog, ApiResponse } from '@/types';
+import { Job, RunLogEntry, NotificationLog, AdminMessage, ApiResponse } from '@/types';
 import { computeStats, statusColor, statusLabel, formatTime, formatDate } from '@/lib/utils';
 
 type Tab = 'dashboard' | 'jobs' | 'drivers' | 'users' | 'history' | 'messages' | 'notifications' | 'import';
@@ -62,6 +62,17 @@ const FREQUENCIES = ['', 'Fortnightly', '3 Weekly', '4 Weekly'];
 const JOB_TYPES  = ['Service', 'Delivery', 'Pickup', 'Adhoc'];
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
+
+function csvEsc(v: string | number | boolean | null | undefined) {
+  const s = String(v ?? '');
+  return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+}
+function downloadCsv(filename: string, headers: string[], rows: (string | number | boolean | null | undefined)[][]) {
+  const content = [headers.join(','), ...rows.map(r => r.map(csvEsc).join(','))].join('\r\n');
+  const url = URL.createObjectURL(new Blob([content], { type: 'text/csv' }));
+  const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
 
 interface DriverRecord      { id: string; name: string; email?: string; phone?: string; isActive: boolean; hasPin: boolean; }
 interface AdminUserRecord   { id: string; name: string; email: string; createdAt: string; }
@@ -317,6 +328,7 @@ export default function AdminPage() {
   const [sortableJobs, setSortableJobs]   = useState<Job[]>([]);
   const masterJobsRef                     = useRef<Job[]>([]);
   const [reordering, setReordering]       = useState(false);
+  const [jobView, setJobView]             = useState<'card' | 'sheet'>('card');
   const [generating, setGenerating] = useState(false);
   const [promoting, setPromoting]   = useState(false);
   const [actionMsg, setActionMsg]   = useState<{ text: string; ok: boolean } | null>(null);
@@ -341,6 +353,68 @@ export default function AdminPage() {
   const [createdKey, setCreatedKey]   = useState<string | null>(null);
   const [copied, setCopied]           = useState(false);
 
+  // Task Bar state: jobId → selected driver for assignment
+  const [taskBarAssign, setTaskBarAssign] = useState<Record<string, string>>({});
+
+  // All hooks must come before any early returns (React rules of hooks)
+  const isAdmin = status === 'authenticated' && session?.user.role === 'admin';
+
+  const { data: driversData, mutate: mutateDrivers } = useSWR<{ success: boolean; data: DriverRecord[] }>(isAdmin ? '/api/admin/drivers' : null, fetcher);
+  const drivers = driversData?.data ?? [];
+
+  const { data: adminUsersData, mutate: mutateUsers } = useSWR<{ success: boolean; data: AdminUserRecord[] }>(
+    isAdmin && tab === 'users' ? '/api/admin/users' : null, fetcher
+  );
+  const adminUsers = adminUsersData?.data ?? [];
+
+  const masterQuery = `/api/jobs/master?${selectedDriver ? `driver=${encodeURIComponent(selectedDriver)}` : ''}${filterDay ? `&day=${filterDay}` : ''}`;
+  const { data: masterData, mutate: mutateMaster } = useSWR<ApiResponse<Job[]>>(
+    isAdmin && tab === 'jobs' ? masterQuery : null, fetcher
+  );
+
+  const dailyDriver = selectedDriver || drivers[0]?.name || '';
+  const { data: dailyData, mutate: mutateDaily } = useSWR<ApiResponse<Job[]>>(
+    isAdmin && dailyDriver ? `/api/jobs?driver=${encodeURIComponent(dailyDriver)}` : null,
+    fetcher, { refreshInterval: 15_000 }
+  );
+
+  const { data: historyData } = useSWR<ApiResponse<RunLogEntry[]>>(isAdmin && tab === 'history' ? '/api/runs/history?days=14' : null, fetcher);
+  const { data: notifData }   = useSWR<ApiResponse<NotificationLog[]>>(isAdmin && tab === 'notifications' ? '/api/notifications/log' : null, fetcher);
+  const { data: sentMsgsData, mutate: mutateSentMsgs } = useSWR<ApiResponse<AdminMessage[]>>(isAdmin && tab === 'messages' ? '/api/admin/messages' : null, fetcher);
+  const { data: apiKeysData, mutate: mutateKeys } = useSWR<{ success: boolean; data: ApiKeyRecord[] }>(
+    isAdmin && tab === 'import' ? '/api/api-keys' : null, fetcher
+  );
+  const apiKeys = apiKeysData?.data ?? [];
+
+  const { data: unscheduledData, mutate: mutateUnscheduled } = useSWR<ApiResponse<Job[]>>(
+    isAdmin && tab === 'dashboard' ? '/api/jobs/unscheduled' : null, fetcher, { refreshInterval: 10_000 }
+  );
+
+  const { data: allDailyData, mutate: mutateAllDaily } = useSWR<ApiResponse<Job[]>>(
+    isAdmin && tab === 'dashboard' && selectedDriver === '' ? '/api/jobs/daily' : null,
+    fetcher, { refreshInterval: 15_000 }
+  );
+
+  const { data: tomorrowPreviewData } = useSWR<ApiResponse<Job[]>>(
+    isAdmin && tab === 'dashboard' ? '/api/jobs/daily?runType=Tomorrow' : null,
+    fetcher, { refreshInterval: 60_000 }
+  );
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+
+  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    setSortableJobs(prev => {
+      const base = prev.length > 0 ? prev : masterJobsRef.current;
+      const oldIdx = base.findIndex(j => j.id === active.id);
+      const newIdx = base.findIndex(j => j.id === over.id);
+      if (oldIdx === -1 || newIdx === -1) return base;
+      return arrayMove(base, oldIdx, newIdx);
+    });
+  }, []);
+
+  // Early returns come after all hooks
   if (status === 'loading') return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--shell)' }}>
       <Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--amber)' }} />
@@ -349,18 +423,6 @@ export default function AdminPage() {
   if (status === 'unauthenticated') { router.replace('/login'); return null; }
   if (session?.user.role !== 'admin') { router.replace('/dashboard'); return null; }
 
-  const { data: driversData, mutate: mutateDrivers } = useSWR<{ success: boolean; data: DriverRecord[] }>('/api/admin/drivers', fetcher);
-  const drivers = driversData?.data ?? [];
-
-  const { data: adminUsersData, mutate: mutateUsers } = useSWR<{ success: boolean; data: AdminUserRecord[] }>(
-    tab === 'users' ? '/api/admin/users' : null, fetcher
-  );
-  const adminUsers = adminUsersData?.data ?? [];
-
-  const masterQuery = `/api/jobs/master?${selectedDriver ? `driver=${encodeURIComponent(selectedDriver)}` : ''}${filterDay ? `&day=${filterDay}` : ''}`;
-  const { data: masterData, mutate: mutateMaster } = useSWR<ApiResponse<Job[]>>(
-    tab === 'jobs' ? masterQuery : null, fetcher
-  );
   const masterJobsRaw = masterData?.data ?? [];
   masterJobsRef.current = masterJobsRaw;
   const masterJobs = masterJobsRaw.filter(j =>
@@ -368,19 +430,23 @@ export default function AdminPage() {
   );
   const displayJobs = search ? masterJobs : sortableJobs.length > 0 ? sortableJobs : masterJobsRaw;
 
-  const dailyDriver = selectedDriver || drivers[0]?.name || '';
-  const { data: dailyData, mutate: mutateDaily } = useSWR<ApiResponse<Job[]>>(
-    dailyDriver ? `/api/jobs?driver=${encodeURIComponent(dailyDriver)}` : null,
-    fetcher, { refreshInterval: 15_000 }
-  );
   const dailyJobs = dailyData?.data ?? [];
+  const unscheduledJobs = unscheduledData?.data ?? [];
 
-  const { data: historyData } = useSWR<ApiResponse<RunLogEntry[]>>(tab === 'history' ? '/api/runs/history?days=14' : null, fetcher);
-  const { data: notifData }   = useSWR<ApiResponse<NotificationLog[]>>(tab === 'notifications' ? '/api/notifications/log' : null, fetcher);
-  const { data: apiKeysData, mutate: mutateKeys } = useSWR<{ success: boolean; data: ApiKeyRecord[] }>(
-    tab === 'import' ? '/api/api-keys' : null, fetcher
-  );
-  const apiKeys = apiKeysData?.data ?? [];
+  // Per-driver summary for "All Drivers" view
+  const allDailyJobs = allDailyData?.data ?? [];
+  const driverSummaries = (() => {
+    const map = new Map<string, { total: number; done: number; issues: number; cantAccess: number }>();
+    for (const j of allDailyJobs) {
+      const prev = map.get(j.driverName) ?? { total: 0, done: 0, issues: 0, cantAccess: 0 };
+      prev.total += 1;
+      if (j.status === 'Done') prev.done += 1;
+      else if (j.status === 'Issue') prev.issues += 1;
+      else if (j.status === 'CouldNotAccess') prev.cantAccess += 1;
+      map.set(j.driverName, prev);
+    }
+    return Array.from(map.entries()).map(([name, s]) => ({ name, ...s }));
+  })();
 
   const stats = computeStats(dailyJobs);
   const filteredHistory = (historyData?.data ?? []).filter(e => {
@@ -407,7 +473,8 @@ export default function AdminPage() {
   };
 
   const handleGenerate = async () => { setGenerating(true); const j = await call('POST', '/api/runs/generate', { adminOverride: true }); flash(j.success ? `✓ Generated ${j.data.count} jobs for tomorrow` : `✗ ${j.error}`, j.success); setGenerating(false); };
-  const handlePromote  = async () => { setPromoting(true);  const j = await call('POST', '/api/runs/promote',  { adminOverride: true }); flash(j.success ? `✓ Promoted ${j.data.count} jobs` : `✗ ${j.error}`, j.success); if (j.success) mutateDaily(); setPromoting(false); };
+  const handlePromote  = async () => { setPromoting(true);  const j = await call('POST', '/api/runs/promote',  { adminOverride: true }); flash(j.success ? `✓ Promoted ${j.data.count} jobs` : `✗ ${j.error}`, j.success); if (j.success) { mutateDaily(); mutateAllDaily(); } setPromoting(false); };
+  const handleDailySummary = async () => { const j = await call('POST', '/api/cron/daily-summary', {}); flash(j.success ? '✓ Daily summary sent to admin email' : `✗ ${j.error}`, j.success); };
 
   const handleSaveJob    = async (data: Record<string, unknown>) => { await call(data.id ? 'PUT' : 'POST', '/api/jobs/master', data); setSortableJobs([]); mutateMaster(); setJobModal({ open: false }); };
   const handleDeleteJob  = async (id: string) => { if (!confirm('Delete this job?')) return; await call('DELETE', '/api/jobs/master', { id }); setSortableJobs([]); mutateMaster(); };
@@ -472,7 +539,7 @@ export default function AdminPage() {
     setSending(true);
     const j = await call('POST', '/api/notifications/send', { to: msgTo, title: '📬 Message from Office', body: msgText, message: msgText });
     flash(j.success ? '✓ Message sent' : `✗ ${j.error}`, j.success);
-    if (j.success) setMsgText('');
+    if (j.success) { setMsgText(''); mutateSentMsgs(); }
     setSending(false);
   };
 
@@ -481,23 +548,37 @@ export default function AdminPage() {
     setReallocating(true);
     const j = await call('PATCH', '/api/jobs', { jobIds: [...selectedJobIds], driverName: reallocDriver });
     flash(j.success ? `✓ Reallocated ${selectedJobIds.size} job(s) to ${reallocDriver}` : `✗ ${j.error}`, j.success);
-    if (j.success) { setSelectedJobIds(new Set()); setSelectMode(false); mutateDaily(); }
+    if (j.success) { setSelectedJobIds(new Set()); setSelectMode(false); mutateDaily(); mutateAllDaily(); }
     setReallocating(false);
   };
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
-
-  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    setSortableJobs(prev => {
-      const base = prev.length > 0 ? prev : masterJobsRef.current;
-      const oldIdx = base.findIndex(j => j.id === active.id);
-      const newIdx = base.findIndex(j => j.id === over.id);
-      if (oldIdx === -1 || newIdx === -1) return base;
-      return arrayMove(base, oldIdx, newIdx);
+  const handleReschedule = async (jobId: string) => {
+    const res = await fetch('/api/jobs/unscheduled', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: jobId }),
     });
-  }, []);
+    const j = await res.json();
+    flash(j.success ? '✓ Job moved to Task Bar' : `✗ ${j.error}`, j.success);
+    if (j.success) { mutateDaily(); mutateUnscheduled(); }
+  };
+
+  const handleAssignJob = async (jobId: string) => {
+    const driverName = taskBarAssign[jobId];
+    if (!driverName) return;
+    const res = await fetch('/api/jobs/unscheduled', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: jobId, driverName }),
+    });
+    const j = await res.json();
+    flash(j.success ? `✓ Assigned to ${driverName}` : `✗ ${j.error}`, j.success);
+    if (j.success) {
+      mutateDaily();
+      mutateUnscheduled();
+      setTaskBarAssign(prev => { const n = { ...prev }; delete n[jobId]; return n; });
+    }
+  };
 
   const handleSaveOrder = async () => {
     const toSave = sortableJobs.length > 0 ? sortableJobs : masterJobsRef.current;
@@ -521,8 +602,18 @@ export default function AdminPage() {
     { id: 'import',        label: 'Import & API', icon: Upload    },
   ];
 
-  const issueJobs     = dailyJobs.filter(j => j.status === 'Issue');
-  const cantAccessJobs = dailyJobs.filter(j => j.status === 'CouldNotAccess');
+  // Tomorrow preview summary
+  const tomorrowPreviewJobs = tomorrowPreviewData?.data ?? [];
+  const tomorrowByDriver = (() => {
+    const map = new Map<string, number>();
+    for (const j of tomorrowPreviewJobs) map.set(j.driverName, (map.get(j.driverName) ?? 0) + 1);
+    return Array.from(map.entries()).map(([name, count]) => ({ name, count }));
+  })();
+
+  // When in all-drivers mode, show alerts across the whole fleet
+  const alertSource = selectedDriver === '' ? allDailyJobs : dailyJobs;
+  const issueJobs      = alertSource.filter(j => j.status === 'Issue');
+  const cantAccessJobs = alertSource.filter(j => j.status === 'CouldNotAccess');
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--shell)' }}>
@@ -608,30 +699,104 @@ export default function AdminPage() {
                 Promote to Daily
               </button>
             </div>
+            <button
+              onClick={handleDailySummary}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-semibold transition-all mt-1"
+              style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}
+            >
+              <BarChart3 className="w-3.5 h-3.5" />
+              Send End-of-Day Summary Email
+            </button>
           </div>
+
+          {/* Tomorrow preview — only shown if there's a generated run */}
+          {tomorrowPreviewJobs.length > 0 && (
+            <div className="card-shell p-4" style={{ borderLeft: '3px solid rgba(16,185,129,0.5)' }}>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: '#34D399', fontFamily: 'var(--font-dm-sans)' }}>
+                  Tomorrow&apos;s Run — Ready to Promote
+                </p>
+                <span className="badge badge-done" style={{ fontSize: '10px' }}>{tomorrowPreviewJobs.length} jobs</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {tomorrowByDriver.map(({ name, count }) => (
+                  <div key={name} className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5" style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)' }}>
+                    <span className="text-xs font-semibold" style={{ color: '#fff', fontFamily: 'var(--font-dm-sans)' }}>{name}</span>
+                    <span className="text-xs font-bold rounded-full px-1.5" style={{ background: 'rgba(16,185,129,0.15)', color: '#34D399', fontFamily: 'var(--font-dm-sans)' }}>{count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Driver picker */}
           <div className="card-shell p-4">
-            <label className={lbl} style={{ color: 'var(--text-tertiary)' }}>View driver stats</label>
+            <label className={lbl} style={{ color: 'var(--text-tertiary)' }}>View driver</label>
             <select
               value={selectedDriver}
               onChange={e => setSelectedDriver(e.target.value)}
               className={inp}
               style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: '#fff' }}
             >
+              <option value="">All Drivers</option>
               {drivers.filter(d => d.isActive).map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
             </select>
           </div>
 
-          {/* Stats grid */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <StatsCard label="Total Jobs"  value={stats.totalJobs}      color="gray"   icon={<List className="w-4 h-4" />} />
-            <StatsCard label="Completed"   value={stats.completedJobs}  color="green"  icon={<CheckCircle2 className="w-4 h-4" />} />
-            <StatsCard label="Pending"     value={stats.pendingJobs}    color="amber"  icon={<Clock className="w-4 h-4" />} />
-            <StatsCard label="Issues"      value={stats.issueJobs}      color="red"    icon={<AlertTriangle className="w-4 h-4" />} />
-            <StatsCard label="No Access"   value={stats.cantAccessJobs} color="orange" icon={<Lock className="w-4 h-4" />} />
-            <StatsCard label="Rate"        value={`${stats.completionRate}%`} color="green" icon={<BarChart3 className="w-4 h-4" />} />
-          </div>
+          {/* All-drivers progress grid */}
+          {selectedDriver === '' && (
+            <div className="space-y-2">
+              {allDailyJobs.length === 0 ? (
+                <p className="text-xs text-center py-4" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                  No daily run active — generate and promote a run first
+                </p>
+              ) : driverSummaries.map(d => {
+                const pct = d.total > 0 ? Math.round((d.done / d.total) * 100) : 0;
+                return (
+                  <div
+                    key={d.name}
+                    className="card-shell p-4 cursor-pointer transition-all"
+                    onClick={() => setSelectedDriver(d.name)}
+                    onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--amber)')}
+                    onMouseLeave={e => (e.currentTarget.style.borderColor = '')}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="font-semibold text-sm" style={{ color: '#fff', fontFamily: 'var(--font-dm-sans)' }}>{d.name}</p>
+                      <div className="flex items-center gap-2">
+                        {d.issues > 0 && (
+                          <span className="badge badge-issue" style={{ fontSize: '10px' }}>{d.issues} issue{d.issues !== 1 ? 's' : ''}</span>
+                        )}
+                        {d.cantAccess > 0 && (
+                          <span className="badge badge-cant" style={{ fontSize: '10px' }}>{d.cantAccess} no access</span>
+                        )}
+                        <span className="text-xs font-semibold" style={{ color: pct === 100 ? '#34D399' : 'var(--amber)', fontFamily: 'var(--font-dm-sans)' }}>
+                          {d.done}/{d.total}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="w-full rounded-full overflow-hidden" style={{ height: 4, background: 'var(--shell-border)' }}>
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{ width: `${pct}%`, background: pct === 100 ? '#10B981' : 'var(--amber)' }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Stats grid — single driver */}
+          {selectedDriver !== '' && (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <StatsCard label="Total Jobs"  value={stats.totalJobs}      color="gray"   icon={<List className="w-4 h-4" />} />
+              <StatsCard label="Completed"   value={stats.completedJobs}  color="green"  icon={<CheckCircle2 className="w-4 h-4" />} />
+              <StatsCard label="Pending"     value={stats.pendingJobs}    color="amber"  icon={<Clock className="w-4 h-4" />} />
+              <StatsCard label="Issues"      value={stats.issueJobs}      color="red"    icon={<AlertTriangle className="w-4 h-4" />} />
+              <StatsCard label="No Access"   value={stats.cantAccessJobs} color="orange" icon={<Lock className="w-4 h-4" />} />
+              <StatsCard label="Rate"        value={`${stats.completionRate}%`} color="green" icon={<BarChart3 className="w-4 h-4" />} />
+            </div>
+          )}
 
           {/* Alerts */}
           {(issueJobs.length > 0 || cantAccessJobs.length > 0) && (
@@ -643,11 +808,18 @@ export default function AdminPage() {
                 <div key={job.id} className="rounded-2xl p-4" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
                   <div className="flex gap-3">
                     <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: '#EF4444' }} />
-                    <div>
+                    <div className="flex-1 min-w-0">
                       <p className="font-semibold text-sm" style={{ color: '#FCA5A5', fontFamily: 'var(--font-dm-sans)' }}>{job.customerName}</p>
                       <p className="text-xs mt-0.5" style={{ color: '#F87171', fontFamily: 'var(--font-dm-sans)' }}>{job.address}</p>
                       <p className="text-xs mt-1" style={{ color: '#FCA5A5', fontFamily: 'var(--font-dm-sans)' }}>{job.issueNotes || 'Issue reported'} · {job.driverName}</p>
                     </div>
+                    <button
+                      onClick={() => handleReschedule(job.id)}
+                      className="flex-shrink-0 self-start text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all"
+                      style={{ background: 'rgba(245,158,11,0.12)', color: 'var(--amber)', border: '1px solid rgba(245,158,11,0.25)', fontFamily: 'var(--font-dm-sans)' }}
+                    >
+                      Reschedule
+                    </button>
                   </div>
                 </div>
               ))}
@@ -655,10 +827,74 @@ export default function AdminPage() {
                 <div key={job.id} className="rounded-2xl p-4" style={{ background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.2)' }}>
                   <div className="flex gap-3">
                     <Lock className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: '#F97316' }} />
-                    <div>
+                    <div className="flex-1 min-w-0">
                       <p className="font-semibold text-sm" style={{ color: '#FED7AA', fontFamily: 'var(--font-dm-sans)' }}>{job.customerName}</p>
                       <p className="text-xs mt-0.5" style={{ color: '#FDBA74', fontFamily: 'var(--font-dm-sans)' }}>{job.address} · {job.driverName}</p>
                     </div>
+                    <button
+                      onClick={() => handleReschedule(job.id)}
+                      className="flex-shrink-0 self-start text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all"
+                      style={{ background: 'rgba(245,158,11,0.12)', color: 'var(--amber)', border: '1px solid rgba(245,158,11,0.25)', fontFamily: 'var(--font-dm-sans)' }}
+                    >
+                      Reschedule
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Task Bar — unscheduled jobs waiting to be assigned */}
+          {unscheduledJobs.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-baseline gap-2 px-1">
+                <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--amber)', fontFamily: 'var(--font-dm-sans)' }}>
+                  Task Bar
+                </p>
+                <p className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                  {unscheduledJobs.length} job{unscheduledJobs.length !== 1 ? 's' : ''} waiting to be assigned
+                </p>
+              </div>
+              {unscheduledJobs.map(job => (
+                <div
+                  key={job.id}
+                  className="card-shell p-4 space-y-3"
+                  style={{ borderLeft: '3px solid var(--amber)' }}
+                >
+                  <div className="flex items-start gap-3">
+                    <div
+                      className="flex-shrink-0 flex items-center justify-center rounded-lg text-xs font-bold"
+                      style={{ width: 30, height: 30, background: 'rgba(245,158,11,0.12)', color: 'var(--amber)', fontFamily: 'var(--font-sora)' }}
+                    >
+                      {job.jobOrder}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm truncate" style={{ color: '#fff', fontFamily: 'var(--font-dm-sans)' }}>{job.customerName}</p>
+                      <p className="text-xs truncate mt-0.5" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>{job.address}</p>
+                      <div className="flex gap-1.5 mt-1 flex-wrap">
+                        <span className="badge" style={{ background: 'var(--shell-border)', color: 'var(--text-tertiary)', fontSize: '10px' }}>{job.jobType}</span>
+                        <span className="badge" style={{ background: 'rgba(139,92,246,0.1)', color: '#7C3AED', fontSize: '10px' }}>was {job.driverName}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <select
+                      value={taskBarAssign[job.id] || ''}
+                      onChange={e => setTaskBarAssign(prev => ({ ...prev, [job.id]: e.target.value }))}
+                      className={`${inp} flex-1`}
+                      style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: taskBarAssign[job.id] ? '#fff' : 'var(--text-tertiary)' }}
+                    >
+                      <option value="">Assign to driver…</option>
+                      {drivers.filter(d => d.isActive).map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+                    </select>
+                    <button
+                      onClick={() => handleAssignJob(job.id)}
+                      disabled={!taskBarAssign[job.id]}
+                      className="px-4 py-2 rounded-xl text-sm font-semibold transition-all disabled:opacity-40 flex-shrink-0"
+                      style={{ background: 'var(--amber)', color: '#000', fontFamily: 'var(--font-dm-sans)' }}
+                    >
+                      Assign
+                    </button>
                   </div>
                 </div>
               ))}
@@ -787,46 +1023,161 @@ export default function AdminPage() {
                 {DAYS.map(d => <option key={d}>{d}</option>)}
               </select>
             </div>
-            <p className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
-              {masterJobs.length} jobs
-            </p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                {masterJobs.length} jobs
+              </p>
+              <div className="flex items-center gap-1 rounded-lg p-0.5" style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)' }}>
+                <button
+                  onClick={() => setJobView('card')}
+                  className="flex items-center justify-center w-7 h-7 rounded-md transition-all"
+                  style={{ background: jobView === 'card' ? 'var(--amber)' : 'transparent', color: jobView === 'card' ? '#000' : 'var(--text-tertiary)' }}
+                  title="Card view"
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => setJobView('sheet')}
+                  className="flex items-center justify-center w-7 h-7 rounded-md transition-all"
+                  style={{ background: jobView === 'sheet' ? 'var(--amber)' : 'transparent', color: jobView === 'sheet' ? '#000' : 'var(--text-tertiary)' }}
+                  title="Sheet view"
+                >
+                  <Table2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
           </div>
 
-          {!search && displayJobs.length > 0 && (
-            <div className="flex items-center justify-between px-1">
-              <p className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>Drag rows to reorder</p>
-              <button
-                onClick={handleSaveOrder}
-                disabled={reordering}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-40"
-                style={{ background: 'rgba(16,185,129,0.1)', color: '#34D399', border: '1px solid rgba(16,185,129,0.2)', fontFamily: 'var(--font-dm-sans)' }}
-              >
-                {reordering ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
-                Save Order
-              </button>
+          {jobView === 'card' && (<>
+            {!search && displayJobs.length > 0 && (
+              <div className="flex items-center justify-between px-1">
+                <p className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>Drag rows to reorder</p>
+                <button
+                  onClick={handleSaveOrder}
+                  disabled={reordering}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-40"
+                  style={{ background: 'rgba(16,185,129,0.1)', color: '#34D399', border: '1px solid rgba(16,185,129,0.2)', fontFamily: 'var(--font-dm-sans)' }}
+                >
+                  {reordering ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                  Save Order
+                </button>
+              </div>
+            )}
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={displayJobs.map(j => j.id)} strategy={verticalListSortingStrategy}>
+                <div className="space-y-2">
+                  {displayJobs.map(job => (
+                    <SortableJobItem
+                      key={job.id}
+                      job={job}
+                      onEdit={() => setJobModal({ open: true, job })}
+                      onDelete={() => handleDeleteJob(job.id)}
+                    />
+                  ))}
+                  {displayJobs.length === 0 && (
+                    <div className="text-center py-16" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                      <List className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                      <p className="text-sm">No jobs found</p>
+                    </div>
+                  )}
+                </div>
+              </SortableContext>
+            </DndContext>
+          </>)}
+
+          {jobView === 'sheet' && (
+            <div className="card-shell overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-2.5" style={{ borderBottom: '1px solid var(--shell-border)' }}>
+                <span className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>{displayJobs.length} jobs</span>
+                <button
+                  onClick={() => downloadCsv(
+                    'thunderbox-jobs.csv',
+                    ['#', 'Customer', 'Address', 'Driver', 'Day', 'Type', 'Frequency', 'Phone', 'Items', 'Notes'],
+                    displayJobs.map(j => [j.jobOrder, j.customerName, j.address, j.driverName, j.day, j.jobType, j.frequency ?? '', j.phone ?? '', j.items ?? '', j.notes ?? ''])
+                  )}
+                  className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all"
+                  style={{ background: 'rgba(16,185,129,0.08)', color: '#34D399', border: '1px solid rgba(16,185,129,0.2)', fontFamily: 'var(--font-dm-sans)' }}
+                >
+                  <Download className="w-3 h-3" /> Export CSV
+                </button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs" style={{ fontFamily: 'var(--font-dm-sans)', borderCollapse: 'collapse', minWidth: 640 }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--shell-border)', background: 'var(--shell-raised)' }}>
+                      {['#', 'Customer', 'Address', 'Driver', 'Day', 'Type', 'Freq', 'Phone', ''].map(h => (
+                        <th
+                          key={h}
+                          className="text-left px-3 py-2.5 font-semibold uppercase tracking-wider"
+                          style={{ color: 'var(--text-tertiary)', fontSize: '10px', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}
+                        >
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {displayJobs.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} className="text-center py-12" style={{ color: 'var(--text-tertiary)' }}>No jobs found</td>
+                      </tr>
+                    ) : displayJobs.map((job, i) => (
+                      <tr
+                        key={job.id}
+                        style={{
+                          borderBottom: i < displayJobs.length - 1 ? '1px solid var(--shell-border)' : undefined,
+                          background: i % 2 === 1 ? 'rgba(255,255,255,0.015)' : undefined,
+                        }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(245,158,11,0.04)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = i % 2 === 1 ? 'rgba(255,255,255,0.015)' : '')}
+                      >
+                        <td className="px-3 py-2.5 font-mono font-bold" style={{ color: 'var(--amber)', fontVariantNumeric: 'tabular-nums', fontSize: '11px' }}>
+                          {job.jobOrder}
+                        </td>
+                        <td className="px-3 py-2.5 font-semibold max-w-[140px]" style={{ color: '#fff' }}>
+                          <span className="block truncate">{job.customerName}</span>
+                        </td>
+                        <td className="px-3 py-2.5 max-w-[160px]" style={{ color: 'var(--text-tertiary)' }}>
+                          <span className="block truncate">{job.address}</span>
+                        </td>
+                        <td className="px-3 py-2.5" style={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{job.driverName}</td>
+                        <td className="px-3 py-2.5" style={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{job.day}</td>
+                        <td className="px-3 py-2.5" style={{ whiteSpace: 'nowrap' }}>
+                          <span className="badge" style={{ background: 'var(--shell-border)', color: 'var(--text-secondary)', fontSize: '10px' }}>{job.jobType}</span>
+                        </td>
+                        <td className="px-3 py-2.5" style={{ color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>{job.frequency || '—'}</td>
+                        <td className="px-3 py-2.5" style={{ color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                          {job.phone ? (
+                            <a href={`tel:${job.phone}`} style={{ color: 'var(--amber)' }}>{job.phone}</a>
+                          ) : '—'}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <div className="flex items-center gap-1.5 justify-end">
+                            <button
+                              onClick={() => setJobModal({ open: true, job })}
+                              className="flex items-center justify-center w-6 h-6 rounded-md transition-all"
+                              style={{ background: 'var(--shell-raised)', color: 'var(--text-tertiary)', border: '1px solid var(--shell-border)' }}
+                              title="Edit"
+                            >
+                              <Edit3 className="w-3 h-3" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteJob(job.id)}
+                              className="flex items-center justify-center w-6 h-6 rounded-md transition-all"
+                              style={{ background: 'rgba(239,68,68,0.08)', color: '#F87171', border: '1px solid rgba(239,68,68,0.15)' }}
+                              title="Delete"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
-
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-            <SortableContext items={displayJobs.map(j => j.id)} strategy={verticalListSortingStrategy}>
-              <div className="space-y-2">
-                {displayJobs.map(job => (
-                  <SortableJobItem
-                    key={job.id}
-                    job={job}
-                    onEdit={() => setJobModal({ open: true, job })}
-                    onDelete={() => handleDeleteJob(job.id)}
-                  />
-                ))}
-                {displayJobs.length === 0 && (
-                  <div className="text-center py-16" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
-                    <List className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                    <p className="text-sm">No jobs found</p>
-                  </div>
-                )}
-              </div>
-            </SortableContext>
-          </DndContext>
         </>)}
 
         {/* ── DRIVERS ────────────────────────────────────────────── */}
@@ -961,9 +1312,22 @@ export default function AdminPage() {
                   {JOB_TYPES.map(t => <option key={t}>{t}</option>)}
                 </select>
               </div>
-              <p className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
-                {filteredHistory.length} of {(historyData?.data ?? []).length} entries · Last 14 days
-              </p>
+              <div className="flex items-center justify-between">
+                <p className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                  {filteredHistory.length} of {(historyData?.data ?? []).length} entries · Last 14 days
+                </p>
+                <button
+                  onClick={() => downloadCsv(
+                    'thunderbox-history.csv',
+                    ['Date', 'Customer', 'Address', 'Driver', 'Job Type', 'Status', 'Issue Notes'],
+                    filteredHistory.map(e => [e.date, e.customerName, e.address, e.driverName, e.jobType, statusLabel(e.status), e.issueNotes ?? ''])
+                  )}
+                  className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all"
+                  style={{ background: 'rgba(16,185,129,0.08)', color: '#34D399', border: '1px solid rgba(16,185,129,0.2)', fontFamily: 'var(--font-dm-sans)' }}
+                >
+                  <Download className="w-3 h-3" /> Export CSV
+                </button>
+              </div>
             </div>
             <div className="space-y-2">
               {filteredHistory.length === 0 && (
@@ -1000,7 +1364,7 @@ export default function AdminPage() {
         )}
 
         {/* ── MESSAGES ───────────────────────────────────────────── */}
-        {tab === 'messages' && (
+        {tab === 'messages' && (<>
           <div className="card-shell p-5">
             <h2 className="font-display font-bold mb-4 flex items-center gap-2" style={{ color: '#fff', fontFamily: 'var(--font-sora)', fontSize: '16px' }}>
               <Send className="w-4 h-4" style={{ color: 'var(--amber)' }} />
@@ -1036,7 +1400,36 @@ export default function AdminPage() {
               </button>
             </div>
           </div>
-        )}
+
+          {/* Sent messages history */}
+          {(sentMsgsData?.data ?? []).length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-widest px-1" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                Recent Messages
+              </p>
+              {(sentMsgsData?.data ?? []).map(msg => (
+                <div key={msg.id} className="card-shell p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="badge" style={{ background: 'rgba(139,92,246,0.1)', color: '#7C3AED', fontSize: '10px' }}>
+                          → {msg.to === 'all' ? 'All Drivers' : msg.to}
+                        </span>
+                        {msg.readAt && (
+                          <span className="badge badge-done" style={{ fontSize: '10px' }}>Read</span>
+                        )}
+                      </div>
+                      <p className="text-sm" style={{ color: '#fff', fontFamily: 'var(--font-dm-sans)' }}>{msg.message}</p>
+                    </div>
+                    <p className="text-xs flex-shrink-0" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                      {formatTime(msg.sentAt)}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>)}
 
         {/* ── NOTIFICATION LOG ───────────────────────────────────── */}
         {tab === 'notifications' && (
