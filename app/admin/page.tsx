@@ -389,6 +389,11 @@ export default function AdminPage() {
     isAdmin && tab === 'dashboard' ? '/api/jobs/unscheduled' : null, fetcher, { refreshInterval: 10_000 }
   );
 
+  const { data: allDailyData, mutate: mutateAllDaily } = useSWR<ApiResponse<Job[]>>(
+    isAdmin && tab === 'dashboard' && selectedDriver === '' ? '/api/jobs/daily' : null,
+    fetcher, { refreshInterval: 15_000 }
+  );
+
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
@@ -422,6 +427,21 @@ export default function AdminPage() {
   const dailyJobs = dailyData?.data ?? [];
   const unscheduledJobs = unscheduledData?.data ?? [];
 
+  // Per-driver summary for "All Drivers" view
+  const allDailyJobs = allDailyData?.data ?? [];
+  const driverSummaries = (() => {
+    const map = new Map<string, { total: number; done: number; issues: number; cantAccess: number }>();
+    for (const j of allDailyJobs) {
+      const prev = map.get(j.driverName) ?? { total: 0, done: 0, issues: 0, cantAccess: 0 };
+      prev.total += 1;
+      if (j.status === 'Done') prev.done += 1;
+      else if (j.status === 'Issue') prev.issues += 1;
+      else if (j.status === 'CouldNotAccess') prev.cantAccess += 1;
+      map.set(j.driverName, prev);
+    }
+    return Array.from(map.entries()).map(([name, s]) => ({ name, ...s }));
+  })();
+
   const stats = computeStats(dailyJobs);
   const filteredHistory = (historyData?.data ?? []).filter(e => {
     if (histSearch && !e.customerName.toLowerCase().includes(histSearch.toLowerCase()) && !e.address.toLowerCase().includes(histSearch.toLowerCase())) return false;
@@ -447,7 +467,7 @@ export default function AdminPage() {
   };
 
   const handleGenerate = async () => { setGenerating(true); const j = await call('POST', '/api/runs/generate', { adminOverride: true }); flash(j.success ? `✓ Generated ${j.data.count} jobs for tomorrow` : `✗ ${j.error}`, j.success); setGenerating(false); };
-  const handlePromote  = async () => { setPromoting(true);  const j = await call('POST', '/api/runs/promote',  { adminOverride: true }); flash(j.success ? `✓ Promoted ${j.data.count} jobs` : `✗ ${j.error}`, j.success); if (j.success) mutateDaily(); setPromoting(false); };
+  const handlePromote  = async () => { setPromoting(true);  const j = await call('POST', '/api/runs/promote',  { adminOverride: true }); flash(j.success ? `✓ Promoted ${j.data.count} jobs` : `✗ ${j.error}`, j.success); if (j.success) { mutateDaily(); mutateAllDaily(); } setPromoting(false); };
 
   const handleSaveJob    = async (data: Record<string, unknown>) => { await call(data.id ? 'PUT' : 'POST', '/api/jobs/master', data); setSortableJobs([]); mutateMaster(); setJobModal({ open: false }); };
   const handleDeleteJob  = async (id: string) => { if (!confirm('Delete this job?')) return; await call('DELETE', '/api/jobs/master', { id }); setSortableJobs([]); mutateMaster(); };
@@ -521,7 +541,7 @@ export default function AdminPage() {
     setReallocating(true);
     const j = await call('PATCH', '/api/jobs', { jobIds: [...selectedJobIds], driverName: reallocDriver });
     flash(j.success ? `✓ Reallocated ${selectedJobIds.size} job(s) to ${reallocDriver}` : `✗ ${j.error}`, j.success);
-    if (j.success) { setSelectedJobIds(new Set()); setSelectMode(false); mutateDaily(); }
+    if (j.success) { setSelectedJobIds(new Set()); setSelectMode(false); mutateDaily(); mutateAllDaily(); }
     setReallocating(false);
   };
 
@@ -575,8 +595,10 @@ export default function AdminPage() {
     { id: 'import',        label: 'Import & API', icon: Upload    },
   ];
 
-  const issueJobs     = dailyJobs.filter(j => j.status === 'Issue');
-  const cantAccessJobs = dailyJobs.filter(j => j.status === 'CouldNotAccess');
+  // When in all-drivers mode, show alerts across the whole fleet
+  const alertSource = selectedDriver === '' ? allDailyJobs : dailyJobs;
+  const issueJobs      = alertSource.filter(j => j.status === 'Issue');
+  const cantAccessJobs = alertSource.filter(j => j.status === 'CouldNotAccess');
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--shell)' }}>
@@ -666,26 +688,72 @@ export default function AdminPage() {
 
           {/* Driver picker */}
           <div className="card-shell p-4">
-            <label className={lbl} style={{ color: 'var(--text-tertiary)' }}>View driver stats</label>
+            <label className={lbl} style={{ color: 'var(--text-tertiary)' }}>View driver</label>
             <select
               value={selectedDriver}
               onChange={e => setSelectedDriver(e.target.value)}
               className={inp}
               style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: '#fff' }}
             >
+              <option value="">All Drivers</option>
               {drivers.filter(d => d.isActive).map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
             </select>
           </div>
 
-          {/* Stats grid */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <StatsCard label="Total Jobs"  value={stats.totalJobs}      color="gray"   icon={<List className="w-4 h-4" />} />
-            <StatsCard label="Completed"   value={stats.completedJobs}  color="green"  icon={<CheckCircle2 className="w-4 h-4" />} />
-            <StatsCard label="Pending"     value={stats.pendingJobs}    color="amber"  icon={<Clock className="w-4 h-4" />} />
-            <StatsCard label="Issues"      value={stats.issueJobs}      color="red"    icon={<AlertTriangle className="w-4 h-4" />} />
-            <StatsCard label="No Access"   value={stats.cantAccessJobs} color="orange" icon={<Lock className="w-4 h-4" />} />
-            <StatsCard label="Rate"        value={`${stats.completionRate}%`} color="green" icon={<BarChart3 className="w-4 h-4" />} />
-          </div>
+          {/* All-drivers progress grid */}
+          {selectedDriver === '' && (
+            <div className="space-y-2">
+              {allDailyJobs.length === 0 ? (
+                <p className="text-xs text-center py-4" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                  No daily run active — generate and promote a run first
+                </p>
+              ) : driverSummaries.map(d => {
+                const pct = d.total > 0 ? Math.round((d.done / d.total) * 100) : 0;
+                return (
+                  <div
+                    key={d.name}
+                    className="card-shell p-4 cursor-pointer transition-all"
+                    onClick={() => setSelectedDriver(d.name)}
+                    onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--amber)')}
+                    onMouseLeave={e => (e.currentTarget.style.borderColor = '')}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="font-semibold text-sm" style={{ color: '#fff', fontFamily: 'var(--font-dm-sans)' }}>{d.name}</p>
+                      <div className="flex items-center gap-2">
+                        {d.issues > 0 && (
+                          <span className="badge badge-issue" style={{ fontSize: '10px' }}>{d.issues} issue{d.issues !== 1 ? 's' : ''}</span>
+                        )}
+                        {d.cantAccess > 0 && (
+                          <span className="badge badge-cant" style={{ fontSize: '10px' }}>{d.cantAccess} no access</span>
+                        )}
+                        <span className="text-xs font-semibold" style={{ color: pct === 100 ? '#34D399' : 'var(--amber)', fontFamily: 'var(--font-dm-sans)' }}>
+                          {d.done}/{d.total}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="w-full rounded-full overflow-hidden" style={{ height: 4, background: 'var(--shell-border)' }}>
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{ width: `${pct}%`, background: pct === 100 ? '#10B981' : 'var(--amber)' }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Stats grid — single driver */}
+          {selectedDriver !== '' && (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <StatsCard label="Total Jobs"  value={stats.totalJobs}      color="gray"   icon={<List className="w-4 h-4" />} />
+              <StatsCard label="Completed"   value={stats.completedJobs}  color="green"  icon={<CheckCircle2 className="w-4 h-4" />} />
+              <StatsCard label="Pending"     value={stats.pendingJobs}    color="amber"  icon={<Clock className="w-4 h-4" />} />
+              <StatsCard label="Issues"      value={stats.issueJobs}      color="red"    icon={<AlertTriangle className="w-4 h-4" />} />
+              <StatsCard label="No Access"   value={stats.cantAccessJobs} color="orange" icon={<Lock className="w-4 h-4" />} />
+              <StatsCard label="Rate"        value={`${stats.completionRate}%`} color="green" icon={<BarChart3 className="w-4 h-4" />} />
+            </div>
+          )}
 
           {/* Alerts */}
           {(issueJobs.length > 0 || cantAccessJobs.length > 0) && (
