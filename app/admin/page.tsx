@@ -14,7 +14,7 @@ import {
   Truck, Play, ArrowRight, AlertTriangle, CheckCircle2, Clock, Lock,
   Send, Bell, List, BarChart3, Loader2, Plus, Trash2, Edit3,
   X, Check, Search, Shield, KeyRound, LogOut, Eye, EyeOff,
-  Upload, Copy, Key, FileUp, GripVertical, Users2, LayoutGrid, Table2,
+  Upload, Copy, Key, FileUp, GripVertical, Users2, LayoutGrid, Table2, Download,
 } from 'lucide-react';
 import Header from '@/components/Header';
 import StatsCard from '@/components/StatsCard';
@@ -62,6 +62,17 @@ const FREQUENCIES = ['', 'Fortnightly', '3 Weekly', '4 Weekly'];
 const JOB_TYPES  = ['Service', 'Delivery', 'Pickup', 'Adhoc'];
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
+
+function csvEsc(v: string | number | boolean | null | undefined) {
+  const s = String(v ?? '');
+  return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+}
+function downloadCsv(filename: string, headers: string[], rows: (string | number | boolean | null | undefined)[][]) {
+  const content = [headers.join(','), ...rows.map(r => r.map(csvEsc).join(','))].join('\r\n');
+  const url = URL.createObjectURL(new Blob([content], { type: 'text/csv' }));
+  const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
 
 interface DriverRecord      { id: string; name: string; email?: string; phone?: string; isActive: boolean; hasPin: boolean; }
 interface AdminUserRecord   { id: string; name: string; email: string; createdAt: string; }
@@ -965,6 +976,20 @@ export default function AdminPage() {
 
           {jobView === 'sheet' && (
             <div className="card-shell overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-2.5" style={{ borderBottom: '1px solid var(--shell-border)' }}>
+                <span className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>{displayJobs.length} jobs</span>
+                <button
+                  onClick={() => downloadCsv(
+                    'thunderbox-jobs.csv',
+                    ['#', 'Customer', 'Address', 'Driver', 'Day', 'Type', 'Frequency', 'Phone', 'Items', 'Notes'],
+                    displayJobs.map(j => [j.jobOrder, j.customerName, j.address, j.driverName, j.day, j.jobType, j.frequency ?? '', j.phone ?? '', j.items ?? '', j.notes ?? ''])
+                  )}
+                  className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all"
+                  style={{ background: 'rgba(16,185,129,0.08)', color: '#34D399', border: '1px solid rgba(16,185,129,0.2)', fontFamily: 'var(--font-dm-sans)' }}
+                >
+                  <Download className="w-3 h-3" /> Export CSV
+                </button>
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs" style={{ fontFamily: 'var(--font-dm-sans)', borderCollapse: 'collapse', minWidth: 640 }}>
                   <thead>
@@ -1176,9 +1201,22 @@ export default function AdminPage() {
                   {JOB_TYPES.map(t => <option key={t}>{t}</option>)}
                 </select>
               </div>
-              <p className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
-                {filteredHistory.length} of {(historyData?.data ?? []).length} entries · Last 14 days
-              </p>
+              <div className="flex items-center justify-between">
+                <p className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                  {filteredHistory.length} of {(historyData?.data ?? []).length} entries · Last 14 days
+                </p>
+                <button
+                  onClick={() => downloadCsv(
+                    'thunderbox-history.csv',
+                    ['Date', 'Customer', 'Address', 'Driver', 'Job Type', 'Status', 'Issue Notes'],
+                    filteredHistory.map(e => [e.date, e.customerName, e.address, e.driverName, e.jobType, statusLabel(e.status), e.issueNotes ?? ''])
+                  )}
+                  className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all"
+                  style={{ background: 'rgba(16,185,129,0.08)', color: '#34D399', border: '1px solid rgba(16,185,129,0.2)', fontFamily: 'var(--font-dm-sans)' }}
+                >
+                  <Download className="w-3 h-3" /> Export CSV
+                </button>
+              </div>
             </div>
             <div className="space-y-2">
               {filteredHistory.length === 0 && (

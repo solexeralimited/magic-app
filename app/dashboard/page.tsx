@@ -58,6 +58,19 @@ export default function DashboardPage() {
     setRefreshing(false);
   };
 
+  const handleOpenMessages = async () => {
+    setShowMessages(s => !s);
+    const hasUnread = messages.some(m => !m.readAt);
+    if (!showMessages && hasUnread && driverName) {
+      await fetch('/api/messages', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ driverName }),
+      });
+      setMessages(prev => prev.map(m => ({ ...m, readAt: m.readAt ?? new Date().toISOString() })));
+    }
+  };
+
   if (status === 'loading') {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--shell)' }}>
@@ -80,7 +93,7 @@ export default function DashboardPage() {
         rightContent={
           <div className="flex items-center gap-1.5">
             <button
-              onClick={() => setShowMessages(s => !s)}
+              onClick={handleOpenMessages}
               className="relative flex items-center justify-center w-8 h-8 rounded-lg transition-all"
               style={{ background: 'var(--shell-raised)', border: '1px solid var(--shell-border)', color: 'var(--text-tertiary)' }}
             >
