@@ -474,6 +474,7 @@ export default function AdminPage() {
 
   const handleGenerate = async () => { setGenerating(true); const j = await call('POST', '/api/runs/generate', { adminOverride: true }); flash(j.success ? `✓ Generated ${j.data.count} jobs for tomorrow` : `✗ ${j.error}`, j.success); setGenerating(false); };
   const handlePromote  = async () => { setPromoting(true);  const j = await call('POST', '/api/runs/promote',  { adminOverride: true }); flash(j.success ? `✓ Promoted ${j.data.count} jobs` : `✗ ${j.error}`, j.success); if (j.success) { mutateDaily(); mutateAllDaily(); } setPromoting(false); };
+  const handleDailySummary = async () => { const j = await call('POST', '/api/cron/daily-summary', {}); flash(j.success ? '✓ Daily summary sent to admin email' : `✗ ${j.error}`, j.success); };
 
   const handleSaveJob    = async (data: Record<string, unknown>) => { await call(data.id ? 'PUT' : 'POST', '/api/jobs/master', data); setSortableJobs([]); mutateMaster(); setJobModal({ open: false }); };
   const handleDeleteJob  = async (id: string) => { if (!confirm('Delete this job?')) return; await call('DELETE', '/api/jobs/master', { id }); setSortableJobs([]); mutateMaster(); };
@@ -698,6 +699,14 @@ export default function AdminPage() {
                 Promote to Daily
               </button>
             </div>
+            <button
+              onClick={handleDailySummary}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-semibold transition-all mt-1"
+              style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}
+            >
+              <BarChart3 className="w-3.5 h-3.5" />
+              Send End-of-Day Summary Email
+            </button>
           </div>
 
           {/* Tomorrow preview — only shown if there's a generated run */}
