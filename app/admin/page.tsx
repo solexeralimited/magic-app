@@ -394,6 +394,11 @@ export default function AdminPage() {
     fetcher, { refreshInterval: 15_000 }
   );
 
+  const { data: tomorrowPreviewData } = useSWR<ApiResponse<Job[]>>(
+    isAdmin && tab === 'dashboard' ? '/api/jobs/daily?runType=Tomorrow' : null,
+    fetcher, { refreshInterval: 60_000 }
+  );
+
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
@@ -595,6 +600,14 @@ export default function AdminPage() {
     { id: 'import',        label: 'Import & API', icon: Upload    },
   ];
 
+  // Tomorrow preview summary
+  const tomorrowPreviewJobs = tomorrowPreviewData?.data ?? [];
+  const tomorrowByDriver = (() => {
+    const map = new Map<string, number>();
+    for (const j of tomorrowPreviewJobs) map.set(j.driverName, (map.get(j.driverName) ?? 0) + 1);
+    return Array.from(map.entries()).map(([name, count]) => ({ name, count }));
+  })();
+
   // When in all-drivers mode, show alerts across the whole fleet
   const alertSource = selectedDriver === '' ? allDailyJobs : dailyJobs;
   const issueJobs      = alertSource.filter(j => j.status === 'Issue');
@@ -685,6 +698,26 @@ export default function AdminPage() {
               </button>
             </div>
           </div>
+
+          {/* Tomorrow preview — only shown if there's a generated run */}
+          {tomorrowPreviewJobs.length > 0 && (
+            <div className="card-shell p-4" style={{ borderLeft: '3px solid rgba(16,185,129,0.5)' }}>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: '#34D399', fontFamily: 'var(--font-dm-sans)' }}>
+                  Tomorrow&apos;s Run — Ready to Promote
+                </p>
+                <span className="badge badge-done" style={{ fontSize: '10px' }}>{tomorrowPreviewJobs.length} jobs</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {tomorrowByDriver.map(({ name, count }) => (
+                  <div key={name} className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5" style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)' }}>
+                    <span className="text-xs font-semibold" style={{ color: '#fff', fontFamily: 'var(--font-dm-sans)' }}>{name}</span>
+                    <span className="text-xs font-bold rounded-full px-1.5" style={{ background: 'rgba(16,185,129,0.15)', color: '#34D399', fontFamily: 'var(--font-dm-sans)' }}>{count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Driver picker */}
           <div className="card-shell p-4">
