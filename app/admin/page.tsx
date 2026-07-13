@@ -341,6 +341,9 @@ export default function AdminPage() {
   const [createdKey, setCreatedKey]   = useState<string | null>(null);
   const [copied, setCopied]           = useState(false);
 
+  // Task Bar state: jobId → selected driver for assignment
+  const [taskBarAssign, setTaskBarAssign] = useState<Record<string, string>>({});
+
   // All hooks must come before any early returns (React rules of hooks)
   const isAdmin = status === 'authenticated' && session?.user.role === 'admin';
 
@@ -369,6 +372,10 @@ export default function AdminPage() {
     isAdmin && tab === 'import' ? '/api/api-keys' : null, fetcher
   );
   const apiKeys = apiKeysData?.data ?? [];
+
+  const { data: unscheduledData, mutate: mutateUnscheduled } = useSWR<ApiResponse<Job[]>>(
+    isAdmin && tab === 'dashboard' ? '/api/jobs/unscheduled' : null, fetcher, { refreshInterval: 10_000 }
+  );
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -401,6 +408,7 @@ export default function AdminPage() {
   const displayJobs = search ? masterJobs : sortableJobs.length > 0 ? sortableJobs : masterJobsRaw;
 
   const dailyJobs = dailyData?.data ?? [];
+  const unscheduledJobs = unscheduledData?.data ?? [];
 
   const stats = computeStats(dailyJobs);
   const filteredHistory = (historyData?.data ?? []).filter(e => {
@@ -503,6 +511,34 @@ export default function AdminPage() {
     flash(j.success ? `✓ Reallocated ${selectedJobIds.size} job(s) to ${reallocDriver}` : `✗ ${j.error}`, j.success);
     if (j.success) { setSelectedJobIds(new Set()); setSelectMode(false); mutateDaily(); }
     setReallocating(false);
+  };
+
+  const handleReschedule = async (jobId: string) => {
+    const res = await fetch('/api/jobs/unscheduled', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: jobId }),
+    });
+    const j = await res.json();
+    flash(j.success ? '✓ Job moved to Task Bar' : `✗ ${j.error}`, j.success);
+    if (j.success) { mutateDaily(); mutateUnscheduled(); }
+  };
+
+  const handleAssignJob = async (jobId: string) => {
+    const driverName = taskBarAssign[jobId];
+    if (!driverName) return;
+    const res = await fetch('/api/jobs/unscheduled', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: jobId, driverName }),
+    });
+    const j = await res.json();
+    flash(j.success ? `✓ Assigned to ${driverName}` : `✗ ${j.error}`, j.success);
+    if (j.success) {
+      mutateDaily();
+      mutateUnscheduled();
+      setTaskBarAssign(prev => { const n = { ...prev }; delete n[jobId]; return n; });
+    }
   };
 
   const handleSaveOrder = async () => {
@@ -649,11 +685,18 @@ export default function AdminPage() {
                 <div key={job.id} className="rounded-2xl p-4" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
                   <div className="flex gap-3">
                     <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: '#EF4444' }} />
-                    <div>
+                    <div className="flex-1 min-w-0">
                       <p className="font-semibold text-sm" style={{ color: '#FCA5A5', fontFamily: 'var(--font-dm-sans)' }}>{job.customerName}</p>
                       <p className="text-xs mt-0.5" style={{ color: '#F87171', fontFamily: 'var(--font-dm-sans)' }}>{job.address}</p>
                       <p className="text-xs mt-1" style={{ color: '#FCA5A5', fontFamily: 'var(--font-dm-sans)' }}>{job.issueNotes || 'Issue reported'} · {job.driverName}</p>
                     </div>
+                    <button
+                      onClick={() => handleReschedule(job.id)}
+                      className="flex-shrink-0 self-start text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all"
+                      style={{ background: 'rgba(245,158,11,0.12)', color: 'var(--amber)', border: '1px solid rgba(245,158,11,0.25)', fontFamily: 'var(--font-dm-sans)' }}
+                    >
+                      Reschedule
+                    </button>
                   </div>
                 </div>
               ))}
@@ -661,10 +704,74 @@ export default function AdminPage() {
                 <div key={job.id} className="rounded-2xl p-4" style={{ background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.2)' }}>
                   <div className="flex gap-3">
                     <Lock className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: '#F97316' }} />
-                    <div>
+                    <div className="flex-1 min-w-0">
                       <p className="font-semibold text-sm" style={{ color: '#FED7AA', fontFamily: 'var(--font-dm-sans)' }}>{job.customerName}</p>
                       <p className="text-xs mt-0.5" style={{ color: '#FDBA74', fontFamily: 'var(--font-dm-sans)' }}>{job.address} · {job.driverName}</p>
                     </div>
+                    <button
+                      onClick={() => handleReschedule(job.id)}
+                      className="flex-shrink-0 self-start text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all"
+                      style={{ background: 'rgba(245,158,11,0.12)', color: 'var(--amber)', border: '1px solid rgba(245,158,11,0.25)', fontFamily: 'var(--font-dm-sans)' }}
+                    >
+                      Reschedule
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Task Bar — unscheduled jobs waiting to be assigned */}
+          {unscheduledJobs.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-baseline gap-2 px-1">
+                <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--amber)', fontFamily: 'var(--font-dm-sans)' }}>
+                  Task Bar
+                </p>
+                <p className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                  {unscheduledJobs.length} job{unscheduledJobs.length !== 1 ? 's' : ''} waiting to be assigned
+                </p>
+              </div>
+              {unscheduledJobs.map(job => (
+                <div
+                  key={job.id}
+                  className="card-shell p-4 space-y-3"
+                  style={{ borderLeft: '3px solid var(--amber)' }}
+                >
+                  <div className="flex items-start gap-3">
+                    <div
+                      className="flex-shrink-0 flex items-center justify-center rounded-lg text-xs font-bold"
+                      style={{ width: 30, height: 30, background: 'rgba(245,158,11,0.12)', color: 'var(--amber)', fontFamily: 'var(--font-sora)' }}
+                    >
+                      {job.jobOrder}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm truncate" style={{ color: '#fff', fontFamily: 'var(--font-dm-sans)' }}>{job.customerName}</p>
+                      <p className="text-xs truncate mt-0.5" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>{job.address}</p>
+                      <div className="flex gap-1.5 mt-1 flex-wrap">
+                        <span className="badge" style={{ background: 'var(--shell-border)', color: 'var(--text-tertiary)', fontSize: '10px' }}>{job.jobType}</span>
+                        <span className="badge" style={{ background: 'rgba(139,92,246,0.1)', color: '#7C3AED', fontSize: '10px' }}>was {job.driverName}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <select
+                      value={taskBarAssign[job.id] || ''}
+                      onChange={e => setTaskBarAssign(prev => ({ ...prev, [job.id]: e.target.value }))}
+                      className={`${inp} flex-1`}
+                      style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: taskBarAssign[job.id] ? '#fff' : 'var(--text-tertiary)' }}
+                    >
+                      <option value="">Assign to driver…</option>
+                      {drivers.filter(d => d.isActive).map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+                    </select>
+                    <button
+                      onClick={() => handleAssignJob(job.id)}
+                      disabled={!taskBarAssign[job.id]}
+                      className="px-4 py-2 rounded-xl text-sm font-semibold transition-all disabled:opacity-40 flex-shrink-0"
+                      style={{ background: 'var(--amber)', color: '#000', fontFamily: 'var(--font-dm-sans)' }}
+                    >
+                      Assign
+                    </button>
                   </div>
                 </div>
               ))}
