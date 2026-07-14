@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Job" ADD COLUMN "sheetRowId" TEXT NOT NULL DEFAULT '';

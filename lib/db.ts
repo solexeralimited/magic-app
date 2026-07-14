@@ -25,6 +25,7 @@ function toJob(p: NonNullable<PrismaJob>): Job {
     status: p.status as Job['status'],
     completionTime: p.completionTime?.toISOString(),
     issueNotes: p.issueNotes ?? undefined,
+    sheetRowId: p.sheetRowId || undefined,
     notificationSentFlags: {
       driverNewRun: p.notifDriverNewRun,
       driverRunUpdated: p.notifDriverUpdated,
@@ -163,6 +164,7 @@ export async function generateTomorrowRuns(): Promise<Job[]> {
         callAhead: j.callAhead,
         status: 'Pending',
         runType: 'Tomorrow',
+        sheetRowId: j.sheetRowId ?? '',
       })),
     });
   }

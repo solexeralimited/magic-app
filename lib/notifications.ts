@@ -16,7 +16,13 @@ function configureVapid() {
   }
 }
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Instantiated lazily — the constructor throws without an API key, which would
+// break builds/environments where email isn't configured.
+let resendClient: Resend | null = null;
+function getResend(): Resend {
+  if (!resendClient) resendClient = new Resend(process.env.RESEND_API_KEY);
+  return resendClient;
+}
 
 // ─── Push Notifications ──────────────────────────────────────────────────────
 
@@ -211,7 +217,7 @@ export async function sendDailySummaryEmail(stats: {
 
 async function sendEmail(to: string, subject: string, html: string): Promise<void> {
   try {
-    await resend.emails.send({
+    await getResend().emails.send({
       from: process.env.EMAIL_FROM || 'noreply@example.com',
       to,
       subject,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { sendDailySummaryEmail } from '@/lib/notifications';
+import { writeBackResults } from '@/lib/sheets-writeback';
 
 function authorized(req: NextRequest): boolean {
   if (process.env.NODE_ENV !== 'production') return true;
@@ -29,7 +30,16 @@ export async function GET(req: NextRequest) {
     };
 
     await sendDailySummaryEmail(stats);
-    return NextResponse.json({ success: true, data: stats });
+
+    // Best-effort: push today's outcomes back to the Google Sheet
+    let sheetSync: Awaited<ReturnType<typeof writeBackResults>> | { error: string };
+    try {
+      sheetSync = await writeBackResults();
+    } catch (err) {
+      sheetSync = { error: String(err) };
+    }
+
+    return NextResponse.json({ success: true, data: { ...stats, sheetSync } });
   } catch (err) {
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
   }
