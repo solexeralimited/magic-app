@@ -54,6 +54,7 @@ model Job {
   notifAdminCantAccess   Boolean   @default(false)
   notifCustomerCallAhead Boolean   @default(false)
   runType                String    @default("Master") // Master | Tomorrow | Daily
+  sheetRowId             String    @default("") // permanent ID linking to a Google Sheets row
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
   runLogEntry            RunLog?

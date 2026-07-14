@@ -30,6 +30,7 @@ export interface Job {
   status: JobStatus;
   completionTime?: string;
   issueNotes?: string;
+  sheetRowId?: string;
   notificationSentFlags: NotificationSentFlags;
   createdAt: string;
   updatedAt: string;

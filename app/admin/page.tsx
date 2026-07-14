@@ -15,6 +15,7 @@ import {
   Send, Bell, List, BarChart3, Loader2, Plus, Trash2, Edit3,
   X, Check, Search, Shield, KeyRound, LogOut, Eye, EyeOff,
   Upload, Copy, Key, FileUp, GripVertical, Users2, LayoutGrid, Table2, Download,
+  FileSpreadsheet, RefreshCw,
 } from 'lucide-react';
 import Header from '@/components/Header';
 import StatsCard from '@/components/StatsCard';
@@ -331,6 +332,8 @@ export default function AdminPage() {
   const [jobView, setJobView]             = useState<'card' | 'sheet'>('card');
   const [generating, setGenerating] = useState(false);
   const [promoting, setPromoting]   = useState(false);
+  const [sheetsImporting, setSheetsImporting] = useState(false);
+  const [sheetsSyncing, setSheetsSyncing]     = useState(false);
   const [actionMsg, setActionMsg]   = useState<{ text: string; ok: boolean } | null>(null);
   const [msgTo, setMsgTo]           = useState('all');
   const [msgText, setMsgText]       = useState('');
@@ -475,6 +478,30 @@ export default function AdminPage() {
   const handleGenerate = async () => { setGenerating(true); const j = await call('POST', '/api/runs/generate', { adminOverride: true }); flash(j.success ? `✓ Generated ${j.data.count} jobs for tomorrow` : `✗ ${j.error}`, j.success); setGenerating(false); };
   const handlePromote  = async () => { setPromoting(true);  const j = await call('POST', '/api/runs/promote',  { adminOverride: true }); flash(j.success ? `✓ Promoted ${j.data.count} jobs` : `✗ ${j.error}`, j.success); if (j.success) { mutateDaily(); mutateAllDaily(); } setPromoting(false); };
   const handleDailySummary = async () => { const j = await call('POST', '/api/cron/daily-summary', {}); flash(j.success ? '✓ Daily summary sent to admin email' : `✗ ${j.error}`, j.success); };
+
+  const handleSheetsImport = async () => {
+    setSheetsImporting(true);
+    const j = await call('POST', '/api/sheets/import', {});
+    if (j.success) {
+      const d = j.data;
+      const errNote = d.errors?.length ? ` (${d.errors.length} rows skipped)` : '';
+      flash(`✓ Sheets sync: ${d.created} added, ${d.updated} updated, ${d.removed} removed${errNote}`, true);
+      setSortableJobs([]);
+      mutateMaster();
+      if (d.errors?.length) console.warn('Sheets import row errors:', d.errors);
+    } else flash(`✗ ${j.error}`, false);
+    setSheetsImporting(false);
+  };
+
+  const handleSheetsWriteback = async () => {
+    setSheetsSyncing(true);
+    const j = await call('POST', '/api/sheets/writeback', {});
+    if (j.success) {
+      const d = j.data;
+      flash(d.skipped ? `— ${d.skipped}` : `✓ ${d.written} results written to sheet${d.notFound ? ` (${d.notFound} rows not found)` : ''}`, true);
+    } else flash(`✗ ${j.error}`, false);
+    setSheetsSyncing(false);
+  };
 
   const handleSaveJob    = async (data: Record<string, unknown>) => { await call(data.id ? 'PUT' : 'POST', '/api/jobs/master', data); setSortableJobs([]); mutateMaster(); setJobModal({ open: false }); };
   const handleDeleteJob  = async (id: string) => { if (!confirm('Delete this job?')) return; await call('DELETE', '/api/jobs/master', { id }); setSortableJobs([]); mutateMaster(); };
@@ -707,6 +734,26 @@ export default function AdminPage() {
               <BarChart3 className="w-3.5 h-3.5" />
               Send End-of-Day Summary Email
             </button>
+            <div className="grid grid-cols-2 gap-3 mt-1">
+              <button
+                onClick={handleSheetsImport}
+                disabled={sheetsImporting}
+                className="flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-semibold transition-all disabled:opacity-50"
+                style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}
+              >
+                {sheetsImporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileSpreadsheet className="w-3.5 h-3.5" />}
+                Import from Sheets
+              </button>
+              <button
+                onClick={handleSheetsWriteback}
+                disabled={sheetsSyncing}
+                className="flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-semibold transition-all disabled:opacity-50"
+                style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}
+              >
+                {sheetsSyncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                Sync Results to Sheets
+              </button>
+            </div>
           </div>
 
           {/* Tomorrow preview — only shown if there's a generated run */}
