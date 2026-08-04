@@ -14,7 +14,7 @@ export interface WriteBackResult {
  * (matched by the ID column). Missing columns are appended to the header row.
  */
 export async function writeBackResults(): Promise<WriteBackResult> {
-  if (!sheetsConfigured()) return { skipped: 'Google Sheets not configured' };
+  if (!(await sheetsConfigured())) return { skipped: 'Google Sheets not configured' };
 
   const jobs = await prisma.job.findMany({
     where: { runType: 'Daily', status: { not: 'Pending' }, sheetRowId: { not: '' } },
@@ -60,7 +60,10 @@ export async function writeBackResults(): Promise<WriteBackResult> {
     const completedAt = job.completionTime
       ? job.completionTime.toLocaleString('en-NZ', { timeZone: 'Pacific/Auckland' })
       : '';
-    updates.push({ row: rowIndex, col: statusCol, value: job.status });
+    const statusLabel = job.status === 'CouldNotAccess' ? 'Could Not Access'
+      : job.status === 'NotRequired' ? 'Not Required'
+      : job.status;
+    updates.push({ row: rowIndex, col: statusCol, value: statusLabel });
     updates.push({ row: rowIndex, col: completedCol, value: completedAt });
     written++;
   }

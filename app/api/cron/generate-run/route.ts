@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateTomorrowRuns } from '@/lib/db';
+import { generateTomorrowRuns, tomorrowRunExists } from '@/lib/db';
 import { sendRunReadyEmail } from '@/lib/notifications';
 
 function authorized(req: NextRequest): boolean {
@@ -15,6 +15,13 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    // Dispatch may have already prepared (and edited) tomorrow's run during the
+    // afternoon — regenerating would silently wipe that work, so skip instead.
+    const existing = await tomorrowRunExists();
+    if (existing > 0) {
+      return NextResponse.json({ success: true, data: { count: existing, skipped: 'run already prepared' } });
+    }
+
     const jobs = await generateTomorrowRuns();
     await sendRunReadyEmail(jobs);
     return NextResponse.json({ success: true, data: { count: jobs.length } });

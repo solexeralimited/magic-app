@@ -1,4 +1,4 @@
-export type JobStatus = 'Pending' | 'Done' | 'CouldNotAccess' | 'Issue';
+export type JobStatus = 'Pending' | 'Done' | 'CouldNotAccess' | 'Issue' | 'NotRequired';
 
 export type JobFrequency = 'Weekly' | 'Fortnightly' | '3 Weekly' | '4 Weekly' | '';
 

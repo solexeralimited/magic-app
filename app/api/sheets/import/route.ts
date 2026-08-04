@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { sheetsConfigured, getTabName, readRows, writeCells, mapHeaders } from '@/lib/google-sheets';
@@ -8,26 +8,34 @@ const VALID_TYPES = ['Service', 'Delivery', 'Pickup', 'Adhoc'];
 const VALID_FREQS = ['', 'Weekly', 'Fortnightly', '3 Weekly', '4 Weekly'];
 
 /**
- * POST /api/sheets/import — sync master jobs from the configured Google Sheet.
+ * POST /api/sheets/import — import master jobs from the configured Google Sheet.
+ *
+ * Body:
+ * - mode: 'replace' (default) wipes all existing Master jobs first, so the sheet
+ *   is the single source of truth. 'sync' keeps the old merge behaviour.
+ * - dryRun: true reads and validates the sheet without touching the database
+ *   or writing IDs back — returns what would happen.
  *
  * Row contract:
- * - Rows with a value in the ID column update the matching master job (matched on sheetRowId).
- * - Rows without an ID create a new master job, and the new permanent ID is written back
- *   into the sheet's ID column (the column is appended to the header row if missing).
- * - Master jobs whose sheetRowId no longer appears in the sheet are deleted (removed rows).
- *   Jobs created in-app (empty sheetRowId) are never touched.
+ * - Rows with a value in the ID column keep that ID as the permanent sheet link.
+ * - Rows without an ID get a new permanent ID written back into the sheet.
+ * - In sync mode, master jobs whose sheetRowId no longer appears are deleted.
  */
-export async function POST() {
+export async function POST(req: NextRequest) {
   const session = await requireAuth('admin');
   if (!session) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
-  if (!sheetsConfigured()) {
+  if (!(await sheetsConfigured())) {
     return NextResponse.json(
-      { success: false, error: 'Google Sheets is not configured (set GOOGLE_SERVICE_ACCOUNT_KEY and GOOGLE_SHEET_ID)' },
+      { success: false, error: 'Google Sheets is not configured (set the sheet in Import & API → Sheets Settings)' },
       { status: 400 }
     );
   }
+
+  const body = await req.json().catch(() => ({}));
+  const mode: 'replace' | 'sync' = body.mode === 'sync' ? 'sync' : 'replace';
+  const dryRun: boolean = body.dryRun === true;
 
   try {
     const tab = await getTabName();
@@ -63,8 +71,7 @@ export async function POST() {
 
     const errors: { row: number; error: string }[] = [];
     const seenIds = new Set<string>();
-    let created = 0;
-    let updated = 0;
+    const validRows: { rowIndex: number; existingId: string; data: Record<string, unknown> }[] = [];
 
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
@@ -104,54 +111,92 @@ export async function POST() {
       }
 
       const callAheadRaw = cell(row, cols.callAhead).toLowerCase();
-      const data = {
-        driverName,
-        customerName,
-        day,
-        jobType,
-        jobOrder:        Math.max(1, parseInt(cell(row, cols.jobOrder)) || 1),
-        address:         cell(row, cols.address),
-        phone:           cell(row, cols.phone),
-        items:           cell(row, cols.items),
-        quantity:        cell(row, cols.quantity),
-        notes:           cell(row, cols.notes),
-        frequency,
-        nextServiceDate: cell(row, cols.nextServiceDate),
-        mapLink:         cell(row, cols.mapLink),
-        callAhead:       callAheadRaw === 'true' || callAheadRaw === 'yes' || callAheadRaw === '1',
-      };
+      validRows.push({
+        rowIndex: i,
+        existingId: cell(row, idCol),
+        data: {
+          driverName,
+          customerName,
+          day,
+          jobType,
+          jobOrder:        Math.max(1, parseInt(cell(row, cols.jobOrder)) || 1),
+          address:         cell(row, cols.address),
+          phone:           cell(row, cols.phone),
+          items:           cell(row, cols.items),
+          quantity:        cell(row, cols.quantity),
+          notes:           cell(row, cols.notes),
+          frequency,
+          nextServiceDate: cell(row, cols.nextServiceDate),
+          mapLink:         cell(row, cols.mapLink),
+          callAhead:       callAheadRaw === 'true' || callAheadRaw === 'yes' || callAheadRaw === '1',
+        },
+      });
+    }
 
-      const existingId = cell(row, idCol);
+    if (dryRun) {
+      const existingMasters = await prisma.job.count({ where: { runType: 'Master' } });
+      return NextResponse.json({
+        success: true,
+        data: {
+          tab,
+          dryRun: true,
+          mode,
+          wouldImport: validRows.length,
+          wouldRemove: mode === 'replace' ? existingMasters : undefined,
+          newIds: validRows.filter(r => !r.existingId).length,
+          errors,
+          preview: validRows.slice(0, 10).map(r => r.data),
+        },
+      });
+    }
+
+    let created = 0;
+    let updated = 0;
+    let removed = 0;
+
+    if (mode === 'replace') {
+      // The sheet is the source of truth: wipe every master job first.
+      // Tomorrow/Daily working copies are left alone — dispatch changes survive.
+      const { count } = await prisma.job.deleteMany({ where: { runType: 'Master' } });
+      removed = count;
+    }
+
+    for (const { rowIndex, existingId, data } of validRows) {
       if (existingId) {
         seenIds.add(existingId);
-        const existing = await prisma.job.findFirst({ where: { runType: 'Master', sheetRowId: existingId } });
+        const existing = mode === 'replace'
+          ? null
+          : await prisma.job.findFirst({ where: { runType: 'Master', sheetRowId: existingId } });
         if (existing) {
           await prisma.job.update({ where: { id: existing.id }, data });
           updated++;
         } else {
-          await prisma.job.create({ data: { ...data, status: 'Pending', runType: 'Master', sheetRowId: existingId } });
+          await prisma.job.create({ data: { ...(data as object), status: 'Pending', runType: 'Master', sheetRowId: existingId } as never });
           created++;
         }
       } else {
-        const job = await prisma.job.create({ data: { ...data, status: 'Pending', runType: 'Master' } });
+        const job = await prisma.job.create({ data: { ...(data as object), status: 'Pending', runType: 'Master' } as never });
         await prisma.job.update({ where: { id: job.id }, data: { sheetRowId: job.id } });
-        pendingWrites.push({ row: i, col: idCol, value: job.id });
+        pendingWrites.push({ row: rowIndex, col: idCol, value: job.id });
         seenIds.add(job.id);
         created++;
       }
     }
 
-    // Remove master jobs whose sheet row was deleted
-    const { count: removed } = await prisma.job.deleteMany({
-      where: { runType: 'Master', sheetRowId: { notIn: [...seenIds, ''] } },
-    });
+    if (mode === 'sync') {
+      // Remove master jobs whose sheet row was deleted
+      const res = await prisma.job.deleteMany({
+        where: { runType: 'Master', sheetRowId: { notIn: [...seenIds, ''] } },
+      });
+      removed = res.count;
+    }
 
     // Stamp new permanent IDs back into the sheet
     await writeCells(tab, pendingWrites);
 
     return NextResponse.json({
       success: true,
-      data: { tab, created, updated, removed, idsWrittenBack: pendingWrites.filter(w => w.row > 0).length, errors },
+      data: { tab, mode, created, updated, removed, idsWrittenBack: pendingWrites.filter(w => w.row > 0).length, errors },
     });
   } catch (err) {
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
