@@ -19,6 +19,8 @@ import {
 } from 'lucide-react';
 import Header from '@/components/Header';
 import StatsCard from '@/components/StatsCard';
+import TomorrowDispatch from '@/components/TomorrowDispatch';
+import { qtyLabel } from '@/components/JobCard';
 import { Job, RunLogEntry, NotificationLog, AdminMessage, ApiResponse } from '@/types';
 import { computeStats, statusColor, statusLabel, formatTime, formatDate } from '@/lib/utils';
 
@@ -263,14 +265,31 @@ function AdminUserForm({ initial, onSave, onClose }: {
 }
 
 // ── Sortable Job Item ─────────────────────────────────────────────────────────
-function SortableJobItem({ job, onEdit, onDelete }: { job: Job; onEdit: () => void; onDelete: () => void }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: job.id });
+function SortableJobItem({ job, onEdit, onDelete, selectable, selected, onToggleSelect }: {
+  job: Job; onEdit: () => void; onDelete: () => void;
+  selectable?: boolean; selected?: boolean; onToggleSelect?: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: job.id, disabled: selectable });
   return (
     <div
       ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1, position: 'relative', zIndex: isDragging ? 999 : undefined }}
+      style={{
+        transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1,
+        position: 'relative', zIndex: isDragging ? 999 : undefined,
+        outline: selected ? '2px solid var(--amber)' : undefined, outlineOffset: '-2px',
+        cursor: selectable ? 'pointer' : undefined,
+      }}
       className="card p-4 flex items-start gap-3"
+      onClick={selectable ? onToggleSelect : undefined}
     >
+      {selectable ? (
+        <div
+          className="flex-shrink-0 flex items-center justify-center rounded-md mt-1 transition-all"
+          style={{ width: 22, height: 22, background: selected ? 'var(--amber)' : '#fff', border: `1.5px solid ${selected ? 'var(--amber)' : 'var(--surface-border)'}` }}
+        >
+          {selected && <Check className="w-3.5 h-3.5" style={{ color: '#000' }} />}
+        </div>
+      ) : (
       <button
         {...attributes}
         {...listeners}
@@ -279,6 +298,7 @@ function SortableJobItem({ job, onEdit, onDelete }: { job: Job; onEdit: () => vo
       >
         <GripVertical className="w-3.5 h-3.5" />
       </button>
+      )}
       <div className="flex-shrink-0 flex items-center justify-center rounded-xl font-display font-bold text-sm"
         style={{ width: 36, height: 36, background: 'rgba(245,158,11,0.1)', color: 'var(--amber)', fontFamily: 'var(--font-sora)' }}>
         {job.jobOrder}
@@ -292,8 +312,12 @@ function SortableJobItem({ job, onEdit, onDelete }: { job: Job; onEdit: () => vo
           {job.callAhead && <span className="badge" style={{ background: 'rgba(236,72,153,0.1)', color: '#BE185D', fontSize: '10px' }}>📞 Call</span>}
         </div>
         <p className="font-semibold text-sm" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-dm-sans)' }}>{job.customerName}</p>
+        {qtyLabel(job) && (
+          <p className="text-xs font-semibold mt-0.5" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-dm-sans)' }}>{qtyLabel(job)}</p>
+        )}
         <p className="text-xs truncate mt-0.5" style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-dm-sans)' }}>{job.address}</p>
       </div>
+      {!selectable && (
       <div className="flex gap-1.5 flex-shrink-0">
         <button onClick={onEdit} className="w-8 h-8 flex items-center justify-center rounded-lg transition-all" style={{ background: 'var(--surface-subtle)', color: 'var(--text-secondary)', border: '1px solid var(--surface-border)' }}>
           <Edit3 className="w-3.5 h-3.5" />
@@ -302,6 +326,7 @@ function SortableJobItem({ job, onEdit, onDelete }: { job: Job; onEdit: () => vo
           <Trash2 className="w-3.5 h-3.5" />
         </button>
       </div>
+      )}
     </div>
   );
 }
@@ -330,6 +355,17 @@ export default function AdminPage() {
   const masterJobsRef                     = useRef<Job[]>([]);
   const [reordering, setReordering]       = useState(false);
   const [jobView, setJobView]             = useState<'card' | 'sheet'>('card');
+  // Jobs tab multi-select (batch move / delete / add-to-tomorrow)
+  const [jobsSelectMode, setJobsSelectMode] = useState(false);
+  const [jobsSelected, setJobsSelected]     = useState<Set<string>>(new Set());
+  const [batchDriver, setBatchDriver]       = useState('');
+  const [batchDay, setBatchDay]             = useState('');
+  const [batchBusy, setBatchBusy]           = useState(false);
+  // Sheets settings (Import & API tab)
+  const [sheetsForm, setSheetsForm]         = useState<{ sheetUrl: string; tabName: string } | null>(null);
+  const [sheetsSaving, setSheetsSaving]     = useState(false);
+  const [dryRunning, setDryRunning]         = useState(false);
+  const [dryRunResult, setDryRunResult]     = useState<{ wouldImport: number; wouldRemove?: number; newIds: number; tab: string; errors: { row: number; error: string }[] } | null>(null);
   const [generating, setGenerating] = useState(false);
   const [promoting, setPromoting]   = useState(false);
   const [sheetsImporting, setSheetsImporting] = useState(false);
@@ -398,9 +434,8 @@ export default function AdminPage() {
     fetcher, { refreshInterval: 15_000 }
   );
 
-  const { data: tomorrowPreviewData } = useSWR<ApiResponse<Job[]>>(
-    isAdmin && tab === 'dashboard' ? '/api/jobs/daily?runType=Tomorrow' : null,
-    fetcher, { refreshInterval: 60_000 }
+  const { data: sheetsSettingsData, mutate: mutateSheetsSettings } = useSWR<ApiResponse<{ sheetId: string; tabName: string; envSheetId: boolean; serviceAccountConfigured: boolean }>>(
+    isAdmin && tab === 'import' ? '/api/settings/sheets' : null, fetcher
   );
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
@@ -475,22 +510,47 @@ export default function AdminPage() {
     return res.json();
   };
 
-  const handleGenerate = async () => { setGenerating(true); const j = await call('POST', '/api/runs/generate', { adminOverride: true }); flash(j.success ? `✓ Generated ${j.data.count} jobs for tomorrow` : `✗ ${j.error}`, j.success); setGenerating(false); };
+  const handleGenerate = async () => {
+    setGenerating(true);
+    let j = await call('POST', '/api/runs/generate', { adminOverride: true });
+    if (!j.success && j.requiresConfirm) {
+      if (confirm(`${j.error}\n\nRegenerate anyway?`)) {
+        j = await call('POST', '/api/runs/generate', { adminOverride: true, force: true });
+      } else {
+        setGenerating(false);
+        return;
+      }
+    }
+    flash(j.success ? `✓ Generated ${j.data.count} jobs for tomorrow` : `✗ ${j.error}`, j.success);
+    setGenerating(false);
+  };
   const handlePromote  = async () => { setPromoting(true);  const j = await call('POST', '/api/runs/promote',  { adminOverride: true }); flash(j.success ? `✓ Promoted ${j.data.count} jobs` : `✗ ${j.error}`, j.success); if (j.success) { mutateDaily(); mutateAllDaily(); } setPromoting(false); };
   const handleDailySummary = async () => { const j = await call('POST', '/api/cron/daily-summary', {}); flash(j.success ? '✓ Daily summary sent to admin email' : `✗ ${j.error}`, j.success); };
 
   const handleSheetsImport = async () => {
+    if (!confirm('Import from Google Sheets?\n\nThis removes ALL existing master jobs first, then imports fresh from the sheet — the sheet is the source of truth. Jobs created in-app will also be removed. Tomorrow/Daily runs are not affected.')) return;
     setSheetsImporting(true);
-    const j = await call('POST', '/api/sheets/import', {});
+    const j = await call('POST', '/api/sheets/import', { mode: 'replace' });
     if (j.success) {
       const d = j.data;
       const errNote = d.errors?.length ? ` (${d.errors.length} rows skipped)` : '';
-      flash(`✓ Sheets sync: ${d.created} added, ${d.updated} updated, ${d.removed} removed${errNote}`, true);
+      flash(`✓ Imported ${d.created} jobs from the sheet (${d.removed} old jobs cleared)${errNote}`, true);
       setSortableJobs([]);
       mutateMaster();
       if (d.errors?.length) console.warn('Sheets import row errors:', d.errors);
     } else flash(`✗ ${j.error}`, false);
     setSheetsImporting(false);
+  };
+
+  const handleNotRequired = async (jobId: string) => {
+    const res = await fetch(`/api/jobs/${jobId}/status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'NotRequired' }),
+    });
+    const j = await res.json();
+    flash(j.success ? '✓ Marked not required — recorded in history' : `✗ ${j.error}`, j.success);
+    if (j.success) { mutateDaily(); mutateAllDaily(); }
   };
 
   const handleSheetsWriteback = async () => {
@@ -607,6 +667,60 @@ export default function AdminPage() {
     }
   };
 
+  const toggleJobSelected = (id: string) =>
+    setJobsSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+
+  const handleBatchMove = async () => {
+    if (jobsSelected.size === 0 || (!batchDriver && !batchDay)) return;
+    setBatchBusy(true);
+    const j = await call('PATCH', '/api/jobs/master', { action: 'batch-move', ids: [...jobsSelected], ...(batchDriver ? { driverName: batchDriver } : {}), ...(batchDay ? { day: batchDay } : {}) });
+    flash(j.success ? `✓ Moved ${jobsSelected.size} job(s)` : `✗ ${j.error}`, j.success);
+    if (j.success) { setJobsSelected(new Set()); setBatchDriver(''); setBatchDay(''); setSortableJobs([]); mutateMaster(); }
+    setBatchBusy(false);
+  };
+
+  const handleBatchDelete = async () => {
+    if (jobsSelected.size === 0) return;
+    if (!confirm(`Delete ${jobsSelected.size} selected job(s) from the master schedule?`)) return;
+    setBatchBusy(true);
+    const j = await call('PATCH', '/api/jobs/master', { action: 'batch-delete', ids: [...jobsSelected] });
+    flash(j.success ? `✓ Deleted ${j.data.deleted} job(s)` : `✗ ${j.error}`, j.success);
+    if (j.success) { setJobsSelected(new Set()); setSortableJobs([]); mutateMaster(); }
+    setBatchBusy(false);
+  };
+
+  const handleBatchToTomorrow = async () => {
+    if (jobsSelected.size === 0) return;
+    setBatchBusy(true);
+    const j = await call('POST', '/api/jobs/tomorrow', { masterIds: [...jobsSelected] });
+    flash(j.success ? `✓ Pulled ${j.data.added} job(s) forward into tomorrow's run${j.data.skipped ? ` (${j.data.skipped} already there)` : ''}` : `✗ ${j.error}`, j.success);
+    if (j.success) setJobsSelected(new Set());
+    setBatchBusy(false);
+  };
+
+  const handleSaveSheetsSettings = async () => {
+    if (!sheetsForm) return;
+    setSheetsSaving(true);
+    const res = await fetch('/api/settings/sheets', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sheetsForm) });
+    const j = await res.json();
+    flash(j.success ? '✓ Sheets settings saved' : `✗ ${j.error}`, j.success);
+    if (j.success) { setSheetsForm(null); setDryRunResult(null); mutateSheetsSettings(); }
+    setSheetsSaving(false);
+  };
+
+  const handleDryRun = async () => {
+    setDryRunning(true);
+    setDryRunResult(null);
+    const j = await call('POST', '/api/sheets/import', { mode: 'replace', dryRun: true });
+    if (j.success) setDryRunResult(j.data);
+    else flash(`✗ ${j.error}`, false);
+    setDryRunning(false);
+  };
+
   const handleSaveOrder = async () => {
     const toSave = sortableJobs.length > 0 ? sortableJobs : masterJobsRef.current;
     if (toSave.length === 0) return;
@@ -629,13 +743,8 @@ export default function AdminPage() {
     { id: 'import',        label: 'Import & API', icon: Upload    },
   ];
 
-  // Tomorrow preview summary
-  const tomorrowPreviewJobs = tomorrowPreviewData?.data ?? [];
-  const tomorrowByDriver = (() => {
-    const map = new Map<string, number>();
-    for (const j of tomorrowPreviewJobs) map.set(j.driverName, (map.get(j.driverName) ?? 0) + 1);
-    return Array.from(map.entries()).map(([name, count]) => ({ name, count }));
-  })();
+  const sheetsSettings = sheetsSettingsData?.data;
+  const sheetsFormValue = sheetsForm ?? { sheetUrl: sheetsSettings?.sheetId ?? '', tabName: sheetsSettings?.tabName ?? '' };
 
   // When in all-drivers mode, show alerts across the whole fleet
   const alertSource = selectedDriver === '' ? allDailyJobs : dailyJobs;
@@ -756,25 +865,8 @@ export default function AdminPage() {
             </div>
           </div>
 
-          {/* Tomorrow preview — only shown if there's a generated run */}
-          {tomorrowPreviewJobs.length > 0 && (
-            <div className="card-shell p-4" style={{ borderLeft: '3px solid rgba(16,185,129,0.5)' }}>
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: '#34D399', fontFamily: 'var(--font-dm-sans)' }}>
-                  Tomorrow&apos;s Run — Ready to Promote
-                </p>
-                <span className="badge badge-done" style={{ fontSize: '10px' }}>{tomorrowPreviewJobs.length} jobs</span>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {tomorrowByDriver.map(({ name, count }) => (
-                  <div key={name} className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5" style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)' }}>
-                    <span className="text-xs font-semibold" style={{ color: '#fff', fontFamily: 'var(--font-dm-sans)' }}>{name}</span>
-                    <span className="text-xs font-bold rounded-full px-1.5" style={{ background: 'rgba(16,185,129,0.15)', color: '#34D399', fontFamily: 'var(--font-dm-sans)' }}>{count}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          {/* Tomorrow's run — dispatch working copy, editable until promoted */}
+          <TomorrowDispatch drivers={drivers} onFlash={flash} />
 
           {/* Driver picker */}
           <div className="card-shell p-4">
@@ -860,13 +952,22 @@ export default function AdminPage() {
                       <p className="text-xs mt-0.5" style={{ color: '#F87171', fontFamily: 'var(--font-dm-sans)' }}>{job.address}</p>
                       <p className="text-xs mt-1" style={{ color: '#FCA5A5', fontFamily: 'var(--font-dm-sans)' }}>{job.issueNotes || 'Issue reported'} · {job.driverName}</p>
                     </div>
-                    <button
-                      onClick={() => handleReschedule(job.id)}
-                      className="flex-shrink-0 self-start text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all"
-                      style={{ background: 'rgba(245,158,11,0.12)', color: 'var(--amber)', border: '1px solid rgba(245,158,11,0.25)', fontFamily: 'var(--font-dm-sans)' }}
-                    >
-                      Reschedule
-                    </button>
+                    <div className="flex flex-col gap-1.5 flex-shrink-0 self-start">
+                      <button
+                        onClick={() => handleReschedule(job.id)}
+                        className="text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all"
+                        style={{ background: 'rgba(245,158,11,0.12)', color: 'var(--amber)', border: '1px solid rgba(245,158,11,0.25)', fontFamily: 'var(--font-dm-sans)' }}
+                      >
+                        Reschedule
+                      </button>
+                      <button
+                        onClick={() => handleNotRequired(job.id)}
+                        className="text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all"
+                        style={{ background: 'rgba(107,114,128,0.12)', color: '#9CA3AF', border: '1px solid rgba(107,114,128,0.3)', fontFamily: 'var(--font-dm-sans)' }}
+                      >
+                        Not Required
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -878,13 +979,22 @@ export default function AdminPage() {
                       <p className="font-semibold text-sm" style={{ color: '#FED7AA', fontFamily: 'var(--font-dm-sans)' }}>{job.customerName}</p>
                       <p className="text-xs mt-0.5" style={{ color: '#FDBA74', fontFamily: 'var(--font-dm-sans)' }}>{job.address} · {job.driverName}</p>
                     </div>
-                    <button
-                      onClick={() => handleReschedule(job.id)}
-                      className="flex-shrink-0 self-start text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all"
-                      style={{ background: 'rgba(245,158,11,0.12)', color: 'var(--amber)', border: '1px solid rgba(245,158,11,0.25)', fontFamily: 'var(--font-dm-sans)' }}
-                    >
-                      Reschedule
-                    </button>
+                    <div className="flex flex-col gap-1.5 flex-shrink-0 self-start">
+                      <button
+                        onClick={() => handleReschedule(job.id)}
+                        className="text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all"
+                        style={{ background: 'rgba(245,158,11,0.12)', color: 'var(--amber)', border: '1px solid rgba(245,158,11,0.25)', fontFamily: 'var(--font-dm-sans)' }}
+                      >
+                        Reschedule
+                      </button>
+                      <button
+                        onClick={() => handleNotRequired(job.id)}
+                        className="text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all"
+                        style={{ background: 'rgba(107,114,128,0.12)', color: '#9CA3AF', border: '1px solid rgba(107,114,128,0.3)', fontFamily: 'var(--font-dm-sans)' }}
+                      >
+                        Not Required
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -1072,8 +1182,30 @@ export default function AdminPage() {
             </div>
             <div className="flex items-center justify-between">
               <p className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
-                {masterJobs.length} jobs
+                {masterJobs.length} jobs{jobsSelectMode && jobsSelected.size > 0 ? ` · ${jobsSelected.size} selected` : ''}
               </p>
+              <div className="flex items-center gap-2">
+              <button
+                onClick={() => { setJobsSelectMode(s => !s); setJobsSelected(new Set()); }}
+                className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all"
+                style={{
+                  background: jobsSelectMode ? 'rgba(245,158,11,0.15)' : 'var(--shell)',
+                  color: jobsSelectMode ? 'var(--amber)' : 'var(--text-tertiary)',
+                  border: jobsSelectMode ? '1px solid rgba(245,158,11,0.3)' : '1px solid var(--shell-border)',
+                  fontFamily: 'var(--font-dm-sans)',
+                }}
+              >
+                <Check className="w-3 h-3" /> {jobsSelectMode ? 'Cancel' : 'Select'}
+              </button>
+              {jobsSelectMode && (
+                <button
+                  onClick={() => setJobsSelected(prev => prev.size === displayJobs.length ? new Set() : new Set(displayJobs.map(j => j.id)))}
+                  className="text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all"
+                  style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}
+                >
+                  {jobsSelected.size === displayJobs.length ? 'Clear All' : 'Select All'}
+                </button>
+              )}
               <div className="flex items-center gap-1 rounded-lg p-0.5" style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)' }}>
                 <button
                   onClick={() => setJobView('card')}
@@ -1092,11 +1224,57 @@ export default function AdminPage() {
                   <Table2 className="w-3.5 h-3.5" />
                 </button>
               </div>
+              </div>
             </div>
+
+            {/* Batch action bar */}
+            {jobsSelectMode && jobsSelected.size > 0 && (
+              <div className="rounded-xl p-3 space-y-2.5" style={{ background: 'var(--shell)', border: '1px solid rgba(245,158,11,0.3)' }}>
+                <div className="flex gap-2">
+                  <select value={batchDriver} onChange={e => setBatchDriver(e.target.value)} className={`${inp} flex-1`} style={{ background: 'var(--shell-raised)', border: '1px solid var(--shell-border)', color: '#fff' }}>
+                    <option value="">Keep driver…</option>
+                    {drivers.filter(d => d.isActive).map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+                  </select>
+                  <select value={batchDay} onChange={e => setBatchDay(e.target.value)} className={`${inp} flex-1`} style={{ background: 'var(--shell-raised)', border: '1px solid var(--shell-border)', color: '#fff' }}>
+                    <option value="">Keep day…</option>
+                    {DAYS.map(d => <option key={d}>{d}</option>)}
+                  </select>
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  <button
+                    onClick={handleBatchMove}
+                    disabled={batchBusy || (!batchDriver && !batchDay)}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all disabled:opacity-40"
+                    style={{ background: 'var(--amber)', color: '#000', fontFamily: 'var(--font-dm-sans)' }}
+                  >
+                    {batchBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Users2 className="w-3.5 h-3.5" />}
+                    Move {jobsSelected.size}
+                  </button>
+                  <button
+                    onClick={handleBatchToTomorrow}
+                    disabled={batchBusy}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all disabled:opacity-40"
+                    style={{ background: 'rgba(16,185,129,0.12)', color: '#34D399', border: '1px solid rgba(16,185,129,0.25)', fontFamily: 'var(--font-dm-sans)' }}
+                  >
+                    <ArrowRight className="w-3.5 h-3.5" />
+                    Pull into Tomorrow
+                  </button>
+                  <button
+                    onClick={handleBatchDelete}
+                    disabled={batchBusy}
+                    className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all disabled:opacity-40"
+                    style={{ background: 'rgba(239,68,68,0.08)', color: '#F87171', border: '1px solid rgba(239,68,68,0.2)', fontFamily: 'var(--font-dm-sans)' }}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Delete
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {jobView === 'card' && (<>
-            {!search && displayJobs.length > 0 && (
+            {!search && !jobsSelectMode && displayJobs.length > 0 && (
               <div className="flex items-center justify-between px-1">
                 <p className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>Drag rows to reorder</p>
                 <button
@@ -1119,6 +1297,9 @@ export default function AdminPage() {
                       job={job}
                       onEdit={() => setJobModal({ open: true, job })}
                       onDelete={() => handleDeleteJob(job.id)}
+                      selectable={jobsSelectMode}
+                      selected={jobsSelected.has(job.id)}
+                      onToggleSelect={() => toggleJobSelected(job.id)}
                     />
                   ))}
                   {displayJobs.length === 0 && (
@@ -1139,8 +1320,8 @@ export default function AdminPage() {
                 <button
                   onClick={() => downloadCsv(
                     'thunderbox-jobs.csv',
-                    ['#', 'Customer', 'Address', 'Driver', 'Day', 'Type', 'Frequency', 'Phone', 'Items', 'Notes'],
-                    displayJobs.map(j => [j.jobOrder, j.customerName, j.address, j.driverName, j.day, j.jobType, j.frequency ?? '', j.phone ?? '', j.items ?? '', j.notes ?? ''])
+                    ['#', 'Customer', 'Address', 'Driver', 'Day', 'Type', 'Qty', 'Unit Type', 'Frequency', 'Phone', 'Notes'],
+                    displayJobs.map(j => [j.jobOrder, j.customerName, j.address, j.driverName, j.day, j.jobType, j.quantity ?? '', j.items ?? '', j.frequency ?? '', j.phone ?? '', j.notes ?? ''])
                   )}
                   className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all"
                   style={{ background: 'rgba(16,185,129,0.08)', color: '#34D399', border: '1px solid rgba(16,185,129,0.2)', fontFamily: 'var(--font-dm-sans)' }}
@@ -1152,7 +1333,7 @@ export default function AdminPage() {
                 <table className="w-full text-xs" style={{ fontFamily: 'var(--font-dm-sans)', borderCollapse: 'collapse', minWidth: 640 }}>
                   <thead>
                     <tr style={{ borderBottom: '1px solid var(--shell-border)', background: 'var(--shell-raised)' }}>
-                      {['#', 'Customer', 'Address', 'Driver', 'Day', 'Type', 'Freq', 'Phone', ''].map(h => (
+                      {[...(jobsSelectMode ? ['✓'] : []), '#', 'Customer', 'Address', 'Driver', 'Day', 'Type', 'Qty × Unit', 'Freq', 'Phone', ''].map(h => (
                         <th
                           key={h}
                           className="text-left px-3 py-2.5 font-semibold uppercase tracking-wider"
@@ -1166,7 +1347,7 @@ export default function AdminPage() {
                   <tbody>
                     {displayJobs.length === 0 ? (
                       <tr>
-                        <td colSpan={9} className="text-center py-12" style={{ color: 'var(--text-tertiary)' }}>No jobs found</td>
+                        <td colSpan={11} className="text-center py-12" style={{ color: 'var(--text-tertiary)' }}>No jobs found</td>
                       </tr>
                     ) : displayJobs.map((job, i) => (
                       <tr
@@ -1174,10 +1355,24 @@ export default function AdminPage() {
                         style={{
                           borderBottom: i < displayJobs.length - 1 ? '1px solid var(--shell-border)' : undefined,
                           background: i % 2 === 1 ? 'rgba(255,255,255,0.015)' : undefined,
+                          cursor: jobsSelectMode ? 'pointer' : undefined,
+                          outline: jobsSelectMode && jobsSelected.has(job.id) ? '2px solid var(--amber)' : undefined,
+                          outlineOffset: '-2px',
                         }}
+                        onClick={jobsSelectMode ? () => toggleJobSelected(job.id) : undefined}
                         onMouseEnter={e => (e.currentTarget.style.background = 'rgba(245,158,11,0.04)')}
                         onMouseLeave={e => (e.currentTarget.style.background = i % 2 === 1 ? 'rgba(255,255,255,0.015)' : '')}
                       >
+                        {jobsSelectMode && (
+                          <td className="px-3 py-2.5">
+                            <div
+                              className="flex items-center justify-center rounded-md"
+                              style={{ width: 18, height: 18, background: jobsSelected.has(job.id) ? 'var(--amber)' : 'var(--shell-raised)', border: `1.5px solid ${jobsSelected.has(job.id) ? 'var(--amber)' : 'var(--shell-border)'}` }}
+                            >
+                              {jobsSelected.has(job.id) && <Check className="w-3 h-3" style={{ color: '#000' }} />}
+                            </div>
+                          </td>
+                        )}
                         <td className="px-3 py-2.5 font-mono font-bold" style={{ color: 'var(--amber)', fontVariantNumeric: 'tabular-nums', fontSize: '11px' }}>
                           {job.jobOrder}
                         </td>
@@ -1192,13 +1387,14 @@ export default function AdminPage() {
                         <td className="px-3 py-2.5" style={{ whiteSpace: 'nowrap' }}>
                           <span className="badge" style={{ background: 'var(--shell-border)', color: 'var(--text-secondary)', fontSize: '10px' }}>{job.jobType}</span>
                         </td>
+                        <td className="px-3 py-2.5" style={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{qtyLabel(job) || '—'}</td>
                         <td className="px-3 py-2.5" style={{ color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>{job.frequency || '—'}</td>
                         <td className="px-3 py-2.5" style={{ color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
                           {job.phone ? (
                             <a href={`tel:${job.phone}`} style={{ color: 'var(--amber)' }}>{job.phone}</a>
                           ) : '—'}
                         </td>
-                        <td className="px-3 py-2.5">
+                        <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
                           <div className="flex items-center gap-1.5 justify-end">
                             <button
                               onClick={() => setJobModal({ open: true, job })}
@@ -1502,6 +1698,93 @@ export default function AdminPage() {
 
         {/* ── IMPORT & API ───────────────────────────────────── */}
         {tab === 'import' && (<>
+
+          {/* Google Sheets settings */}
+          <div className="card-shell p-5 space-y-4">
+            <div>
+              <h2 className="font-display font-bold flex items-center gap-2" style={{ color: '#fff', fontFamily: 'var(--font-sora)', fontSize: '16px' }}>
+                <FileSpreadsheet className="w-4 h-4" style={{ color: 'var(--amber)' }} /> Google Sheets Settings
+              </h2>
+              <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                Point the app at your schedule spreadsheet — no redeploy needed
+              </p>
+            </div>
+
+            {sheetsSettings && !sheetsSettings.serviceAccountConfigured && (
+              <div className="rounded-xl px-4 py-3" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+                <p className="text-xs font-semibold" style={{ color: '#FCA5A5', fontFamily: 'var(--font-dm-sans)' }}>
+                  ⚠️ No Google service account key is configured on the server (GOOGLE_SERVICE_ACCOUNT_KEY) — Sheets sync won&apos;t work until that&apos;s set.
+                </p>
+              </div>
+            )}
+
+            <div>
+              <label className={lbl} style={{ color: 'var(--text-tertiary)' }}>Sheet URL or ID</label>
+              <input
+                className={inp}
+                style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: '#fff' }}
+                placeholder={sheetsSettings?.envSheetId ? 'Using sheet from server config — paste a URL to override' : 'https://docs.google.com/spreadsheets/d/…'}
+                value={sheetsFormValue.sheetUrl}
+                onChange={e => setSheetsForm({ ...sheetsFormValue, sheetUrl: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className={lbl} style={{ color: 'var(--text-tertiary)' }}>Tab name (blank = first tab)</label>
+              <input
+                className={inp}
+                style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: '#fff' }}
+                placeholder="e.g. Schedule"
+                value={sheetsFormValue.tabName}
+                onChange={e => setSheetsForm({ ...sheetsFormValue, tabName: e.target.value })}
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleSaveSheetsSettings}
+                disabled={sheetsSaving || !sheetsForm}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-40"
+                style={{ background: 'var(--amber)', color: '#000', fontFamily: 'var(--font-dm-sans)' }}
+              >
+                {sheetsSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                Save Settings
+              </button>
+              <button
+                onClick={handleDryRun}
+                disabled={dryRunning}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-40"
+                style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: 'var(--text-secondary)', fontFamily: 'var(--font-dm-sans)' }}
+              >
+                {dryRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
+                Preview Import (dry run)
+              </button>
+            </div>
+
+            {dryRunResult && (
+              <div className="rounded-xl p-4 space-y-2" style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)' }}>
+                <p className="text-sm font-semibold" style={{ color: '#34D399', fontFamily: 'var(--font-dm-sans)' }}>
+                  Reading tab &quot;{dryRunResult.tab}&quot; — nothing was changed
+                </p>
+                <p className="text-xs" style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-dm-sans)' }}>
+                  Import would load <strong style={{ color: '#fff' }}>{dryRunResult.wouldImport}</strong> jobs
+                  {dryRunResult.wouldRemove !== undefined && <> and clear <strong style={{ color: '#fff' }}>{dryRunResult.wouldRemove}</strong> existing master jobs</>}
+                  {dryRunResult.newIds > 0 && <> · {dryRunResult.newIds} rows would get new permanent IDs</>}
+                </p>
+                {dryRunResult.errors.length > 0 && (
+                  <div className="space-y-1 mt-1">
+                    <p className="text-xs font-semibold" style={{ color: '#FCA5A5', fontFamily: 'var(--font-dm-sans)' }}>
+                      {dryRunResult.errors.length} row(s) would be skipped:
+                    </p>
+                    {dryRunResult.errors.slice(0, 8).map((e, i) => (
+                      <p key={i} className="text-xs" style={{ color: '#FCA5A5', fontFamily: 'var(--font-dm-sans)' }}>Row {e.row}: {e.error}</p>
+                    ))}
+                    {dryRunResult.errors.length > 8 && (
+                      <p className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>+ {dryRunResult.errors.length - 8} more</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
           {/* CSV Upload */}
           <div className="card-shell p-5 space-y-4">

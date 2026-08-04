@@ -46,10 +46,39 @@ export function useJobs(driverName: string | null) {
     }
   };
 
+  const updateJobStatuses = async (
+    updates: { id: string; status: Job['status']; issueNotes?: string }[]
+  ): Promise<boolean> => {
+    // Optimistic update for the whole site visit
+    if (data?.data) {
+      const byId = new Map(updates.map(u => [u.id, u]));
+      const updated = data.data.map(j => {
+        const u = byId.get(j.id);
+        return u ? { ...j, status: u.status, issueNotes: u.issueNotes, updatedAt: new Date().toISOString() } : j;
+      });
+      mutate({ ...data, data: updated }, false);
+    }
+
+    try {
+      const res = await fetch('/api/jobs/batch-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ updates }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error);
+      mutate();
+      return true;
+    } catch {
+      mutate();
+      return false;
+    }
+  };
+
   const jobs = data?.data ?? [];
   const activeJobs = jobs.filter(j => j.status === 'Pending');
   const completedJobs = jobs.filter(j => j.status !== 'Pending');
   const tomorrowJobs = tomorrowData?.data ?? [];
 
-  return { jobs, activeJobs, completedJobs, isLoading, error, mutate, updateJobStatus, tomorrowJobs, tomorrowLoading };
+  return { jobs, activeJobs, completedJobs, isLoading, error, mutate, updateJobStatus, updateJobStatuses, tomorrowJobs, tomorrowLoading };
 }
