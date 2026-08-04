@@ -53,6 +53,39 @@ export function statusColor(status: Job['status']): string {
   return map[status];
 }
 
+/** "2 × Non-Flush Units" — quantity and unit type together, however much of each we have. */
+export function qtyLabel(job: Pick<Job, 'quantity' | 'items'>): string {
+  if (job.quantity && job.items) return `${job.quantity} × ${job.items}`;
+  return job.items || (job.quantity ? `Qty: ${job.quantity}` : '');
+}
+
+/** A recurring job is due when its next-service date has arrived (weekly = always due). */
+export function isJobDueForDate(job: Pick<Job, 'frequency' | 'nextServiceDate'>, targetDate: Date): boolean {
+  if (!job.frequency || job.frequency === 'Weekly') return true;
+  if (!job.nextServiceDate) return true;
+  const dueDate = new Date(job.nextServiceDate);
+  return dueDate <= targetDate;
+}
+
+// One entry per position in the run: either a single job or a whole site visit
+export type RunEntry = { key: string; jobs: Job[] };
+
+/** Group pending jobs by site: same customer + same address ⇒ one site card. */
+export function groupBySite(jobs: Job[]): RunEntry[] {
+  const groups = new Map<string, Job[]>();
+  for (const job of jobs) {
+    const key = job.address.trim()
+      ? `${job.customerName.trim().toLowerCase()}|${job.address.trim().toLowerCase()}`
+      : `solo|${job.id}`;
+    const list = groups.get(key);
+    if (list) list.push(job);
+    else groups.set(key, [job]);
+  }
+  return Array.from(groups.entries())
+    .map(([key, list]) => ({ key, jobs: [...list].sort((a, b) => a.jobOrder - b.jobOrder) }))
+    .sort((a, b) => a.jobs[0].jobOrder - b.jobs[0].jobOrder);
+}
+
 export function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }

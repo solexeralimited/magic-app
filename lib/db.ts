@@ -1,5 +1,8 @@
 import { prisma } from './prisma';
+import { isJobDueForDate } from './utils';
 import { Job, Driver, RunLogEntry, AdminMessage, NotificationLog, PushSubscriptionData } from '@/types';
+
+export { isJobDueForDate };
 
 // ─── Type mapping helpers ────────────────────────────────────────────────────
 
@@ -132,13 +135,6 @@ export async function updateJobStatus(
 }
 
 // ─── Run generation ───────────────────────────────────────────────────────────
-
-export function isJobDueForDate(job: Job, targetDate: Date): boolean {
-  if (!job.frequency || job.frequency === 'Weekly') return true;
-  if (!job.nextServiceDate) return true;
-  const dueDate = new Date(job.nextServiceDate);
-  return dueDate <= targetDate;
-}
 
 export async function tomorrowRunExists(): Promise<number> {
   return prisma.job.count({ where: { runType: 'Tomorrow' } });
