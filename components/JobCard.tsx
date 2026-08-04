@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { Phone, MapPin, CheckCircle, AlertTriangle, Lock, Clock, Package, RotateCcw, Hash } from 'lucide-react';
+import { Phone, MapPin, CheckCircle, AlertTriangle, Lock, Clock, Package, RotateCcw } from 'lucide-react';
 import { Job } from '@/types';
 import { cn, formatTime } from '@/lib/utils';
 
@@ -12,11 +12,18 @@ interface JobCardProps {
 }
 
 const statusConfig = {
-  Pending:        { label: 'Pending',   accent: '#F59E0B', badge: 'badge-pending' },
-  Done:           { label: 'Done',      accent: '#10B981', badge: 'badge-done'    },
-  Issue:          { label: 'Issue',     accent: '#EF4444', badge: 'badge-issue'   },
-  CouldNotAccess: { label: 'No Access', accent: '#F97316', badge: 'badge-cant'    },
+  Pending:        { label: 'Pending',      accent: '#F59E0B', badge: 'badge-pending' },
+  Done:           { label: 'Done',         accent: '#10B981', badge: 'badge-done'    },
+  Issue:          { label: 'Issue',        accent: '#EF4444', badge: 'badge-issue'   },
+  CouldNotAccess: { label: 'No Access',    accent: '#F97316', badge: 'badge-cant'    },
+  NotRequired:    { label: 'Not Required', accent: '#6B7280', badge: 'badge-notreq'  },
 };
+
+/** "2 × Non-Flush Units" — quantity and unit type together, however much of each we have. */
+export function qtyLabel(job: Pick<Job, 'quantity' | 'items'>): string {
+  if (job.quantity && job.items) return `${job.quantity} × ${job.items}`;
+  return job.items || (job.quantity ? `Qty: ${job.quantity}` : '');
+}
 
 const jobTypeColors: Record<string, { border: string; bg: string; text: string }> = {
   'Service':  { border: '#059669', bg: '#ecfdf5', text: '#065f46' },
@@ -85,6 +92,12 @@ export default function JobCard({ job, onStatusChange, isCompleted, readOnly }: 
             <p className="text-xs truncate" style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-dm-sans)' }}>
               {job.customerName}
             </p>
+            {qtyLabel(job) && (
+              <p className="text-sm font-semibold mt-1 flex items-center gap-1.5" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-dm-sans)' }}>
+                <Package className="w-3.5 h-3.5 flex-shrink-0" style={{ color: typeColor.border }} />
+                {qtyLabel(job)}
+              </p>
+            )}
             <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
               <span className="badge" style={{ background: typeColor.border + '20', color: typeColor.border, fontSize: '10px', border: `1px solid ${typeColor.border}40` }}>
                 {job.jobType}
@@ -133,26 +146,8 @@ export default function JobCard({ job, onStatusChange, isCompleted, readOnly }: 
       </div>
 
       {/* ── Details (always visible) ───────────────────────────────── */}
-      {(job.items || job.quantity || job.notes || job.frequency || job.issueNotes) && (
+      {(job.notes || job.frequency || job.issueNotes) && (
         <div className="px-4 pb-4 space-y-2.5" style={{ borderTop: '1px solid var(--surface-border)', paddingTop: '12px' }}>
-          {job.items && (
-            <div className="flex gap-2.5 items-start">
-              <Package className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: 'var(--text-tertiary)' }} />
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide mb-0.5" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)', letterSpacing: '0.05em' }}>Items</p>
-                <p className="text-sm" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-dm-sans)' }}>{job.items}</p>
-              </div>
-            </div>
-          )}
-          {job.quantity && (
-            <div className="flex gap-2.5 items-start">
-              <Hash className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: 'var(--text-tertiary)' }} />
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide mb-0.5" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)', letterSpacing: '0.05em' }}>Qty</p>
-                <p className="text-sm" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-dm-sans)' }}>{job.quantity}</p>
-              </div>
-            </div>
-          )}
           {job.notes && (
             <div className="rounded-xl p-3" style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)' }}>
               <p className="text-xs font-semibold mb-1" style={{ color: 'var(--amber-dark)', fontFamily: 'var(--font-dm-sans)' }}>Notes</p>

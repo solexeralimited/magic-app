@@ -6,6 +6,7 @@ import { LogOut, Bell, BellOff, MessageSquare, Loader2, X, Search } from 'lucide
 import Header from '@/components/Header';
 import ProgressBar from '@/components/ProgressBar';
 import JobList from '@/components/JobList';
+import PrepSummary from '@/components/PrepSummary';
 import { useJobs } from '@/hooks/useJobs';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { AdminMessage, ApiResponse } from '@/types';
@@ -32,7 +33,7 @@ export default function DashboardPage() {
   const { data: session, status } = useSession();
   const driverName = session?.user?.name ?? null;
 
-  const { jobs, activeJobs, completedJobs, isLoading, mutate, updateJobStatus, tomorrowJobs, tomorrowLoading } = useJobs(driverName);
+  const { jobs, activeJobs, completedJobs, isLoading, mutate, updateJobStatus, updateJobStatuses, tomorrowJobs, tomorrowLoading } = useJobs(driverName);
   const { permission, subscribe } = usePushNotifications(driverName);
   const [messages, setMessages]       = useState<AdminMessage[]>([]);
   const [showMessages, setShowMessages] = useState(false);
@@ -235,6 +236,7 @@ export default function DashboardPage() {
                   j.address.toLowerCase().includes(search.toLowerCase())
                 ) : jobs}
                 onStatusChange={updateJobStatus}
+                onBatchStatus={updateJobStatuses}
               />
             )}
           </>
@@ -243,6 +245,7 @@ export default function DashboardPage() {
             <p className="text-xs mb-4" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
               Read-only preview of tomorrow&apos;s scheduled jobs.
             </p>
+            {!tomorrowLoading && <PrepSummary jobs={tomorrowJobs} />}
             {tomorrowLoading ? (
               <div className="space-y-3">
                 {[1, 2].map(i => (
