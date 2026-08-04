@@ -114,3 +114,9 @@ model ApiKey {
   lastUsedAt DateTime?
   isActive   Boolean   @default(true)
 }
+
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @default(now()) @updatedAt
+}
