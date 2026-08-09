@@ -362,10 +362,10 @@ export default function AdminPage() {
   const [batchDay, setBatchDay]             = useState('');
   const [batchBusy, setBatchBusy]           = useState(false);
   // Sheets settings (Import & API tab)
-  const [sheetsForm, setSheetsForm]         = useState<{ sheetUrl: string; tabName: string; defaultDriver: string } | null>(null);
+  const [sheetsForm, setSheetsForm]         = useState<{ sheetUrl: string; tabName: string; defaultDriver: string; driverTabs: boolean } | null>(null);
   const [sheetsSaving, setSheetsSaving]     = useState(false);
   const [dryRunning, setDryRunning]         = useState(false);
-  const [dryRunResult, setDryRunResult]     = useState<{ wouldImport: number; wouldRemove?: number; newIds: number; tab: string; headerRow?: number; driverSource?: string; orderColumn?: string; errors: { row: number; error: string }[] } | null>(null);
+  const [dryRunResult, setDryRunResult]     = useState<{ wouldImport: number; wouldRemove?: number; newIds: number; tab: string; headerRow?: number; driverSource?: string; orderColumn?: string; driverTabs?: boolean; perTab?: { tab: string; rows: number; errors: number }[]; skippedTabs?: string[]; errors: { tab?: string; row: number; error: string }[] } | null>(null);
   const [generating, setGenerating] = useState(false);
   const [promoting, setPromoting]   = useState(false);
   const [sheetsImporting, setSheetsImporting] = useState(false);
@@ -435,8 +435,9 @@ export default function AdminPage() {
   );
 
   const { data: sheetsSettingsData, mutate: mutateSheetsSettings } = useSWR<ApiResponse<{
-    sheetId: string; tabName: string; gid: string; defaultDriver: string; resolvedTab: string;
-    availableTabs: string[]; tabError: string; envSheetId: boolean; serviceAccountConfigured: boolean;
+    sheetId: string; tabName: string; gid: string; defaultDriver: string; driverTabs: boolean;
+    resolvedTab: string; availableTabs: string[]; tabError: string; envSheetId: boolean;
+    serviceAccountConfigured: boolean;
   }>>(isAdmin && tab === 'import' ? '/api/settings/sheets' : null, fetcher);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
@@ -535,7 +536,10 @@ export default function AdminPage() {
     if (j.success) {
       const d = j.data;
       const errNote = d.errors?.length ? ` (${d.errors.length} rows skipped)` : '';
-      flash(`✓ Imported ${d.created} jobs from the sheet (${d.removed} old jobs cleared)${errNote}`, true);
+      const tabNote = d.driverTabs && d.perTab?.length
+        ? ` across ${d.perTab.length} driver tabs: ${d.perTab.map((t: { tab: string; rows: number }) => `${t.tab} ${t.rows}`).join(', ')}`
+        : '';
+      flash(`✓ Imported ${d.created} jobs${tabNote} (${d.removed} old jobs cleared)${errNote}`, true);
       setSortableJobs([]);
       mutateMaster();
       if (d.errors?.length) console.warn('Sheets import row errors:', d.errors);
@@ -749,7 +753,10 @@ export default function AdminPage() {
     sheetUrl: sheetsSettings?.sheetId ?? '',
     tabName: sheetsSettings?.tabName ?? '',
     defaultDriver: sheetsSettings?.defaultDriver ?? '',
+    driverTabs: sheetsSettings?.driverTabs ?? false,
   };
+  // Tabs named after active drivers — the signal for driver-tab mode
+  const driverTabMatches = (sheetsSettings?.availableTabs ?? []).filter(t => drivers.some(d => d.isActive && d.name === t.trim()));
 
   // When in all-drivers mode, show alerts across the whole fleet
   const alertSource = selectedDriver === '' ? allDailyJobs : dailyJobs;
@@ -1733,7 +1740,38 @@ export default function AdminPage() {
                 onChange={e => setSheetsForm({ ...sheetsFormValue, sheetUrl: e.target.value })}
               />
             </div>
-            <div>
+            {/* Driver-tab mode — one tab per driver */}
+            <div className="rounded-xl p-4" style={{ background: 'var(--shell)', border: `1px solid ${sheetsFormValue.driverTabs ? 'rgba(245,158,11,0.35)' : 'var(--shell-border)'}` }}>
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 rounded accent-amber-500 mt-0.5"
+                  checked={sheetsFormValue.driverTabs}
+                  onChange={e => setSheetsForm({ ...sheetsFormValue, driverTabs: e.target.checked })}
+                />
+                <span>
+                  <span className="text-sm font-semibold" style={{ color: '#fff', fontFamily: 'var(--font-dm-sans)' }}>
+                    Each tab is one driver&apos;s run sheet
+                  </span>
+                  <span className="block text-xs mt-0.5" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                    Imports every tab named after a driver in one go and assigns each tab&apos;s jobs to that driver.
+                    Tab name and default driver below are ignored.
+                  </span>
+                </span>
+              </label>
+              {driverTabMatches.length > 0 && (
+                <p className="text-xs mt-2 ml-7" style={{ color: '#34D399', fontFamily: 'var(--font-dm-sans)' }}>
+                  {driverTabMatches.length} tab{driverTabMatches.length !== 1 ? 's' : ''} match a driver: {driverTabMatches.map(t => `"${t}"`).join(', ')}
+                </p>
+              )}
+              {(sheetsSettings?.availableTabs?.length ?? 0) > 0 && driverTabMatches.length === 0 && (
+                <p className="text-xs mt-2 ml-7" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                  No tab name matches an active driver — names must match exactly.
+                </p>
+              )}
+            </div>
+
+            <div style={{ opacity: sheetsFormValue.driverTabs ? 0.45 : 1 }}>
               <label className={lbl} style={{ color: 'var(--text-tertiary)' }}>
                 Tab name (blank = the tab your link pointed at)
               </label>
@@ -1751,7 +1789,7 @@ export default function AdminPage() {
               ) : null}
             </div>
 
-            <div>
+            <div style={{ opacity: sheetsFormValue.driverTabs ? 0.45 : 1 }}>
               <label className={lbl} style={{ color: 'var(--text-tertiary)' }}>
                 Default driver (used when the sheet has no Driver column)
               </label>
@@ -1770,7 +1808,7 @@ export default function AdminPage() {
             </div>
 
             {/* Which tab will actually be read */}
-            {sheetsSettings?.resolvedTab && (
+            {sheetsSettings?.resolvedTab && !sheetsFormValue.driverTabs && (
               <div className="rounded-xl px-4 py-2.5" style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)' }}>
                 <p className="text-xs" style={{ color: '#34D399', fontFamily: 'var(--font-dm-sans)' }}>
                   Reading tab <strong>&quot;{sheetsSettings.resolvedTab}&quot;</strong>
@@ -1812,6 +1850,20 @@ export default function AdminPage() {
                 <p className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
                   Headings found on row {dryRunResult.headerRow} · driver from {dryRunResult.driverSource} · run order from {dryRunResult.orderColumn}
                 </p>
+                {dryRunResult.perTab && dryRunResult.perTab.length > 1 && (
+                  <div className="flex flex-wrap gap-1.5 mt-1">
+                    {dryRunResult.perTab.map(t => (
+                      <span key={t.tab} className="badge" style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: t.errors ? '#FCA5A5' : '#34D399', fontSize: '10px' }}>
+                        {t.tab}: {t.rows} job{t.rows !== 1 ? 's' : ''}{t.errors ? ` · ${t.errors} skipped` : ''}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {dryRunResult.skippedTabs && dryRunResult.skippedTabs.length > 0 && (
+                  <p className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                    Tabs ignored (no matching driver): {dryRunResult.skippedTabs.map(t => `"${t}"`).join(', ')}
+                  </p>
+                )}
                 <p className="text-xs" style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-dm-sans)' }}>
                   Import would load <strong style={{ color: '#fff' }}>{dryRunResult.wouldImport}</strong> jobs
                   {dryRunResult.wouldRemove !== undefined && <> and clear <strong style={{ color: '#fff' }}>{dryRunResult.wouldRemove}</strong> existing master jobs</>}
@@ -1823,7 +1875,9 @@ export default function AdminPage() {
                       {dryRunResult.errors.length} row(s) would be skipped:
                     </p>
                     {dryRunResult.errors.slice(0, 8).map((e, i) => (
-                      <p key={i} className="text-xs" style={{ color: '#FCA5A5', fontFamily: 'var(--font-dm-sans)' }}>Row {e.row}: {e.error}</p>
+                      <p key={i} className="text-xs" style={{ color: '#FCA5A5', fontFamily: 'var(--font-dm-sans)' }}>
+                        {e.tab ? `${e.tab} ` : ''}row {e.row}: {e.error}
+                      </p>
                     ))}
                     {dryRunResult.errors.length > 8 && (
                       <p className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>+ {dryRunResult.errors.length - 8} more</p>
