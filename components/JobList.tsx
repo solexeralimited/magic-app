@@ -2,21 +2,27 @@
 import { useState } from 'react';
 import { Job } from '@/types';
 import JobCard from './JobCard';
+import SiteVisitCard from './SiteVisitCard';
+import { groupBySite } from '@/lib/utils';
 import { ClipboardList, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface JobListProps {
   jobs: Job[];
   onStatusChange: (id: string, status: Job['status'], notes?: string) => Promise<boolean>;
+  onBatchStatus?: (updates: { id: string; status: Job['status']; issueNotes?: string }[]) => Promise<boolean>;
   readOnly?: boolean;
   emptyMessage?: string;
   emptySubMessage?: string;
 }
 
-export default function JobList({ jobs, onStatusChange, readOnly, emptyMessage, emptySubMessage }: JobListProps) {
+export default function JobList({ jobs, onStatusChange, onBatchStatus, readOnly, emptyMessage, emptySubMessage }: JobListProps) {
   const [showCompleted, setShowCompleted] = useState(false);
 
   const active    = jobs.filter(j => j.status === 'Pending');
   const completed = jobs.filter(j => j.status !== 'Pending');
+  const entries   = onBatchStatus && !readOnly
+    ? groupBySite(active)
+    : active.map(j => ({ key: j.id, jobs: [j] }));
 
   if (jobs.length === 0) {
     return (
@@ -39,12 +45,16 @@ export default function JobList({ jobs, onStatusChange, readOnly, emptyMessage, 
 
   return (
     <div className="space-y-6">
-      {/* Active jobs */}
-      {active.length > 0 && (
+      {/* Active jobs — site visits collapse into one card */}
+      {entries.length > 0 && (
         <div className="space-y-3">
-          {active.map((job, i) => (
-            <div key={job.id} style={{ animationDelay: `${i * 0.05}s` }}>
-              <JobCard job={job} onStatusChange={onStatusChange} readOnly={readOnly} />
+          {entries.map((entry, i) => (
+            <div key={entry.key} style={{ animationDelay: `${i * 0.05}s` }}>
+              {entry.jobs.length > 1 && onBatchStatus ? (
+                <SiteVisitCard jobs={entry.jobs} onBatchStatus={onBatchStatus} />
+              ) : (
+                <JobCard job={entry.jobs[0]} onStatusChange={onStatusChange} readOnly={readOnly} />
+              )}
             </div>
           ))}
         </div>
