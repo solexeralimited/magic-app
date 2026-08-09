@@ -2,21 +2,45 @@
 import { useState } from 'react';
 import { Job } from '@/types';
 import JobCard from './JobCard';
+import SiteVisitCard from './SiteVisitCard';
 import { ClipboardList, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface JobListProps {
   jobs: Job[];
   onStatusChange: (id: string, status: Job['status'], notes?: string) => Promise<boolean>;
+  onBatchStatus?: (updates: { id: string; status: Job['status']; issueNotes?: string }[]) => Promise<boolean>;
   readOnly?: boolean;
   emptyMessage?: string;
   emptySubMessage?: string;
 }
 
-export default function JobList({ jobs, onStatusChange, readOnly, emptyMessage, emptySubMessage }: JobListProps) {
+// One entry per position in the run: either a single job or a whole site visit
+type RunEntry = { key: string; jobs: Job[] };
+
+/** Group consecutive-by-site pending jobs: same customer + same address ⇒ one site card. */
+function groupBySite(jobs: Job[]): RunEntry[] {
+  const groups = new Map<string, Job[]>();
+  for (const job of jobs) {
+    const key = job.address.trim()
+      ? `${job.customerName.trim().toLowerCase()}|${job.address.trim().toLowerCase()}`
+      : `solo|${job.id}`;
+    const list = groups.get(key);
+    if (list) list.push(job);
+    else groups.set(key, [job]);
+  }
+  return Array.from(groups.entries())
+    .map(([key, list]) => ({ key, jobs: [...list].sort((a, b) => a.jobOrder - b.jobOrder) }))
+    .sort((a, b) => a.jobs[0].jobOrder - b.jobs[0].jobOrder);
+}
+
+export default function JobList({ jobs, onStatusChange, onBatchStatus, readOnly, emptyMessage, emptySubMessage }: JobListProps) {
   const [showCompleted, setShowCompleted] = useState(false);
 
   const active    = jobs.filter(j => j.status === 'Pending');
   const completed = jobs.filter(j => j.status !== 'Pending');
+  const entries   = onBatchStatus && !readOnly
+    ? groupBySite(active)
+    : active.map(j => ({ key: j.id, jobs: [j] }));
 
   if (jobs.length === 0) {
     return (
@@ -39,12 +63,16 @@ export default function JobList({ jobs, onStatusChange, readOnly, emptyMessage, 
 
   return (
     <div className="space-y-6">
-      {/* Active jobs */}
-      {active.length > 0 && (
+      {/* Active jobs — site visits collapse into one card */}
+      {entries.length > 0 && (
         <div className="space-y-3">
-          {active.map((job, i) => (
-            <div key={job.id} style={{ animationDelay: `${i * 0.05}s` }}>
-              <JobCard job={job} onStatusChange={onStatusChange} readOnly={readOnly} />
+          {entries.map((entry, i) => (
+            <div key={entry.key} style={{ animationDelay: `${i * 0.05}s` }}>
+              {entry.jobs.length > 1 && onBatchStatus ? (
+                <SiteVisitCard jobs={entry.jobs} onBatchStatus={onBatchStatus} />
+              ) : (
+                <JobCard job={entry.jobs[0]} onStatusChange={onStatusChange} readOnly={readOnly} />
+              )}
             </div>
           ))}
         </div>
