@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Job } from '@/types';
 import JobCard from './JobCard';
 import SiteVisitCard from './SiteVisitCard';
+import { groupBySite } from '@/lib/utils';
 import { ClipboardList, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface JobListProps {
@@ -12,25 +13,6 @@ interface JobListProps {
   readOnly?: boolean;
   emptyMessage?: string;
   emptySubMessage?: string;
-}
-
-// One entry per position in the run: either a single job or a whole site visit
-type RunEntry = { key: string; jobs: Job[] };
-
-/** Group consecutive-by-site pending jobs: same customer + same address ⇒ one site card. */
-function groupBySite(jobs: Job[]): RunEntry[] {
-  const groups = new Map<string, Job[]>();
-  for (const job of jobs) {
-    const key = job.address.trim()
-      ? `${job.customerName.trim().toLowerCase()}|${job.address.trim().toLowerCase()}`
-      : `solo|${job.id}`;
-    const list = groups.get(key);
-    if (list) list.push(job);
-    else groups.set(key, [job]);
-  }
-  return Array.from(groups.entries())
-    .map(([key, list]) => ({ key, jobs: [...list].sort((a, b) => a.jobOrder - b.jobOrder) }))
-    .sort((a, b) => a.jobs[0].jobOrder - b.jobs[0].jobOrder);
 }
 
 export default function JobList({ jobs, onStatusChange, onBatchStatus, readOnly, emptyMessage, emptySubMessage }: JobListProps) {

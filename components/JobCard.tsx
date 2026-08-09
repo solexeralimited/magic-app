@@ -2,7 +2,10 @@
 import { useState } from 'react';
 import { Phone, MapPin, CheckCircle, AlertTriangle, Lock, Clock, Package, RotateCcw } from 'lucide-react';
 import { Job } from '@/types';
-import { cn, formatTime } from '@/lib/utils';
+import { cn, formatTime, qtyLabel } from '@/lib/utils';
+
+// Re-exported so existing imports from this component keep working
+export { qtyLabel };
 
 interface JobCardProps {
   job: Job;
@@ -18,12 +21,6 @@ const statusConfig = {
   CouldNotAccess: { label: 'No Access',    accent: '#F97316', badge: 'badge-cant'    },
   NotRequired:    { label: 'Not Required', accent: '#6B7280', badge: 'badge-notreq'  },
 };
-
-/** "2 × Non-Flush Units" — quantity and unit type together, however much of each we have. */
-export function qtyLabel(job: Pick<Job, 'quantity' | 'items'>): string {
-  if (job.quantity && job.items) return `${job.quantity} × ${job.items}`;
-  return job.items || (job.quantity ? `Qty: ${job.quantity}` : '');
-}
 
 const jobTypeColors: Record<string, { border: string; bg: string; text: string }> = {
   'Service':  { border: '#059669', bg: '#ecfdf5', text: '#065f46' },
