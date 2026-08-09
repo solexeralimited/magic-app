@@ -103,11 +103,19 @@ async function sheetsFetch(path: string, init?: RequestInit): Promise<Record<str
  */
 export async function getTabName(): Promise<string> {
   const configured = await getSetting(SETTING_KEYS.sheetTab);
-  if (configured) return configured;
-
   const gid = await getSetting(SETTING_KEYS.sheetGid);
   const meta = await sheetsFetch('?fields=sheets.properties(title,sheetId)');
   const sheets = (meta.sheets as { properties: { title: string; sheetId: number } }[] | undefined) ?? [];
+
+  if (configured) {
+    // Verify it exists rather than handing Google a name it will reject with
+    // an opaque "Unable to parse range".
+    const titles = sheets.map(s => s.properties.title);
+    if (!titles.includes(configured)) {
+      throw new Error(`This sheet has no tab named "${configured}". Tabs in this sheet: ${titles.map(t => `"${t}"`).join(', ')}`);
+    }
+    return configured;
+  }
 
   if (gid) {
     const match = sheets.find(s => String(s.properties.sheetId) === gid);

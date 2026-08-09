@@ -6,11 +6,12 @@ export async function GET() {
   const session = await requireAuth('admin');
   if (!session) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   try {
-    const [sheetId, tabName, gid, defaultDriver] = await Promise.all([
+    const [sheetId, tabName, gid, defaultDriver, driverTabs] = await Promise.all([
       getSetting(SETTING_KEYS.sheetId),
       getSetting(SETTING_KEYS.sheetTab),
       getSetting(SETTING_KEYS.sheetGid),
       getSetting(SETTING_KEYS.defaultDriver),
+      getSetting(SETTING_KEYS.driverTabs),
     ]);
 
     // Show which tab will actually be used, and what else is available
@@ -34,6 +35,7 @@ export async function GET() {
         tabName: tabName ?? '',
         gid: gid ?? '',
         defaultDriver: defaultDriver ?? '',
+        driverTabs: driverTabs === '1',
         resolvedTab,
         availableTabs,
         tabError,
@@ -75,6 +77,9 @@ export async function PUT(req: NextRequest) {
     }
     if (body.defaultDriver !== undefined) {
       await setSetting(SETTING_KEYS.defaultDriver, String(body.defaultDriver).trim());
+    }
+    if (body.driverTabs !== undefined) {
+      await setSetting(SETTING_KEYS.driverTabs, body.driverTabs ? '1' : '');
     }
     return NextResponse.json({ success: true });
   } catch (err) {
