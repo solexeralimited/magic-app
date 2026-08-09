@@ -6,6 +6,7 @@ import { prisma } from './prisma';
 export const SETTING_KEYS = {
   sheetId: 'sheets.spreadsheetId',
   sheetTab: 'sheets.tabName',
+  sheetGid: 'sheets.gid',
 } as const;
 
 export async function getSetting(key: string): Promise<string | null> {
@@ -29,4 +30,14 @@ export async function setSetting(key: string, value: string): Promise<void> {
 export function parseSpreadsheetId(input: string): string {
   const m = input.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
   return m ? m[1] : input.trim();
+}
+
+/**
+ * Extract the tab id (gid) from a Sheets URL — it appears as ?gid=… and/or #gid=….
+ * Without it we would fall back to the first tab, which is silently the wrong
+ * data whenever someone copies the URL while a later tab is open.
+ */
+export function parseSheetGid(input: string): string {
+  const m = input.match(/[?&#]gid=(\d+)/);
+  return m ? m[1] : '';
 }

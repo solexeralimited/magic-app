@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { mapHeaders, colToA1 } from '@/lib/google-sheets';
-import { parseSpreadsheetId } from '@/lib/settings';
+import { mapHeaders, colToA1, quoteTab } from '@/lib/google-sheets';
+import { parseSpreadsheetId, parseSheetGid } from '@/lib/settings';
 
 describe('mapHeaders — sheet column recognition', () => {
   it('maps the standard template headings', () => {
@@ -52,11 +52,42 @@ describe('colToA1', () => {
   });
 });
 
+describe('quoteTab — A1 notation quoting', () => {
+  it('quotes a tab name containing a space (regression: "Unable to parse range")', () => {
+    expect(quoteTab('Google Sheet')).toBe("'Google Sheet'");
+  });
+  it('quotes simple names too — always valid', () => {
+    expect(quoteTab('Sheet1')).toBe("'Sheet1'");
+  });
+  it('escapes single quotes by doubling them', () => {
+    expect(quoteTab("Dylan's Run")).toBe("'Dylan''s Run'");
+  });
+});
+
 describe('parseSpreadsheetId', () => {
   it('extracts the ID from a full URL', () => {
     expect(parseSpreadsheetId('https://docs.google.com/spreadsheets/d/1AbC_dEf-123/edit#gid=0')).toBe('1AbC_dEf-123');
   });
   it('passes a bare ID through', () => {
     expect(parseSpreadsheetId(' 1AbC_dEf-123 ')).toBe('1AbC_dEf-123');
+  });
+  it('handles a real Thunderbox sheet URL', () => {
+    expect(parseSpreadsheetId('https://docs.google.com/spreadsheets/d/1hr6N1sDUoXcgwiN-aBHWalGlzf1y-XpvuSJlsEk7pfw/edit?gid=1015081653#gid=1015081653'))
+      .toBe('1hr6N1sDUoXcgwiN-aBHWalGlzf1y-XpvuSJlsEk7pfw');
+  });
+});
+
+describe('parseSheetGid — which tab the link pointed at', () => {
+  it('reads the gid from the query string', () => {
+    expect(parseSheetGid('https://docs.google.com/spreadsheets/d/abc/edit?gid=1015081653#gid=1015081653')).toBe('1015081653');
+  });
+  it('reads the gid from the fragment alone', () => {
+    expect(parseSheetGid('https://docs.google.com/spreadsheets/d/abc/edit#gid=42')).toBe('42');
+  });
+  it('returns empty when the URL has no gid', () => {
+    expect(parseSheetGid('https://docs.google.com/spreadsheets/d/abc/edit')).toBe('');
+  });
+  it('returns empty for a bare spreadsheet ID', () => {
+    expect(parseSheetGid('1AbC_dEf-123')).toBe('');
   });
 });

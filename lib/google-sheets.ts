@@ -94,19 +94,56 @@ async function sheetsFetch(path: string, init?: RequestInit): Promise<Record<str
 
 // ─── Sheet operations ────────────────────────────────────────────────────────
 
+/**
+ * Resolve which tab to use, in order of precedence:
+ *   1. an explicitly configured tab name
+ *   2. the gid captured from the pasted sheet URL (the tab the user was looking at)
+ *   3. GOOGLE_SHEET_TAB from the environment
+ *   4. the first tab in the spreadsheet
+ */
 export async function getTabName(): Promise<string> {
-  const configured = (await getSetting(SETTING_KEYS.sheetTab)) || process.env.GOOGLE_SHEET_TAB;
+  const configured = await getSetting(SETTING_KEYS.sheetTab);
   if (configured) return configured;
-  const meta = await sheetsFetch('?fields=sheets.properties.title');
-  const sheets = meta.sheets as { properties: { title: string } }[] | undefined;
-  const title = sheets?.[0]?.properties?.title;
+
+  const gid = await getSetting(SETTING_KEYS.sheetGid);
+  const meta = await sheetsFetch('?fields=sheets.properties(title,sheetId)');
+  const sheets = (meta.sheets as { properties: { title: string; sheetId: number } }[] | undefined) ?? [];
+
+  if (gid) {
+    const match = sheets.find(s => String(s.properties.sheetId) === gid);
+    if (match) return match.properties.title;
+    throw new Error(
+      `The sheet has no tab with id ${gid}. Available tabs: ${sheets.map(s => s.properties.title).join(', ')}`
+    );
+  }
+
+  const envTab = process.env.GOOGLE_SHEET_TAB;
+  if (envTab) return envTab;
+
+  const title = sheets[0]?.properties?.title;
   if (!title) throw new Error('Spreadsheet has no tabs');
   return title;
 }
 
+/** Tab names in the spreadsheet — used to give a helpful error when one is misspelled. */
+export async function listTabNames(): Promise<string[]> {
+  const meta = await sheetsFetch('?fields=sheets.properties.title');
+  const sheets = (meta.sheets as { properties: { title: string } }[] | undefined) ?? [];
+  return sheets.map(s => s.properties.title);
+}
+
+/**
+ * Quote a tab name for A1 notation. Names containing spaces or punctuation
+ * ("Google Sheet", "Run Sheet 2026") are unparseable unquoted; single quotes
+ * inside a name are escaped by doubling them.
+ */
+export function quoteTab(tab: string): string {
+  return `'${tab.replace(/'/g, "''")}'`;
+}
+
 /** Read the whole tab. Returns rows of cell strings; row 0 is the header row. */
 export async function readRows(tab: string): Promise<string[][]> {
-  const data = await sheetsFetch(`/values/${encodeURIComponent(tab)}`);
+  const data = await sheetsFetch(`/values/${encodeURIComponent(quoteTab(tab))}`);
   const values = (data.values as string[][] | undefined) ?? [];
   return values.map(row => row.map(cell => String(cell ?? '')));
 }
@@ -122,7 +159,7 @@ export async function writeCells(
     body: JSON.stringify({
       valueInputOption: 'RAW',
       data: updates.map(u => ({
-        range: `${tab}!${colToA1(u.col)}${u.row + 1}`,
+        range: `${quoteTab(tab)}!${colToA1(u.col)}${u.row + 1}`,
         values: [[u.value]],
       })),
     }),

@@ -434,9 +434,10 @@ export default function AdminPage() {
     fetcher, { refreshInterval: 15_000 }
   );
 
-  const { data: sheetsSettingsData, mutate: mutateSheetsSettings } = useSWR<ApiResponse<{ sheetId: string; tabName: string; envSheetId: boolean; serviceAccountConfigured: boolean }>>(
-    isAdmin && tab === 'import' ? '/api/settings/sheets' : null, fetcher
-  );
+  const { data: sheetsSettingsData, mutate: mutateSheetsSettings } = useSWR<ApiResponse<{
+    sheetId: string; tabName: string; gid: string; resolvedTab: string; availableTabs: string[];
+    tabError: string; envSheetId: boolean; serviceAccountConfigured: boolean;
+  }>>(isAdmin && tab === 'import' ? '/api/settings/sheets' : null, fetcher);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -1729,15 +1730,37 @@ export default function AdminPage() {
               />
             </div>
             <div>
-              <label className={lbl} style={{ color: 'var(--text-tertiary)' }}>Tab name (blank = first tab)</label>
+              <label className={lbl} style={{ color: 'var(--text-tertiary)' }}>
+                Tab name (blank = the tab your link pointed at)
+              </label>
               <input
                 className={inp}
                 style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: '#fff' }}
-                placeholder="e.g. Schedule"
+                placeholder={sheetsSettings?.availableTabs?.length ? `e.g. ${sheetsSettings.availableTabs[0]}` : 'e.g. Schedule'}
                 value={sheetsFormValue.tabName}
                 onChange={e => setSheetsForm({ ...sheetsFormValue, tabName: e.target.value })}
               />
+              {sheetsSettings?.availableTabs?.length ? (
+                <p className="text-xs mt-1.5" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                  Tabs in this sheet: {sheetsSettings.availableTabs.map(t => `"${t}"`).join(', ')}
+                </p>
+              ) : null}
             </div>
+
+            {/* Which tab will actually be read */}
+            {sheetsSettings?.resolvedTab && (
+              <div className="rounded-xl px-4 py-2.5" style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)' }}>
+                <p className="text-xs" style={{ color: '#34D399', fontFamily: 'var(--font-dm-sans)' }}>
+                  Reading tab <strong>&quot;{sheetsSettings.resolvedTab}&quot;</strong>
+                  {!sheetsSettings.tabName && sheetsSettings.gid ? ' (from your link)' : ''}
+                </p>
+              </div>
+            )}
+            {sheetsSettings?.tabError && (
+              <div className="rounded-xl px-4 py-2.5" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+                <p className="text-xs" style={{ color: '#FCA5A5', fontFamily: 'var(--font-dm-sans)' }}>{sheetsSettings.tabError}</p>
+              </div>
+            )}
             <div className="flex gap-2">
               <button
                 onClick={handleSaveSheetsSettings}
