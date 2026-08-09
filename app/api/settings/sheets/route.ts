@@ -1,20 +1,42 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { getSetting, setSetting, parseSpreadsheetId, SETTING_KEYS } from '@/lib/settings';
+import { getSetting, setSetting, parseSpreadsheetId, parseSheetGid, SETTING_KEYS } from '@/lib/settings';
 
 export async function GET() {
   const session = await requireAuth('admin');
   if (!session) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   try {
-    const [sheetId, tabName] = await Promise.all([
+    const [sheetId, tabName, gid, defaultDriver] = await Promise.all([
       getSetting(SETTING_KEYS.sheetId),
       getSetting(SETTING_KEYS.sheetTab),
+      getSetting(SETTING_KEYS.sheetGid),
+      getSetting(SETTING_KEYS.defaultDriver),
     ]);
+
+    // Show which tab will actually be used, and what else is available
+    let resolvedTab = '';
+    let availableTabs: string[] = [];
+    let tabError = '';
+    if (sheetId || process.env.GOOGLE_SHEET_ID) {
+      try {
+        const [{ getTabName, listTabNames }] = [await import('@/lib/google-sheets')];
+        availableTabs = await listTabNames();
+        resolvedTab = await getTabName();
+      } catch (e) {
+        tabError = String(e instanceof Error ? e.message : e);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       data: {
         sheetId: sheetId ?? '',
         tabName: tabName ?? '',
+        gid: gid ?? '',
+        defaultDriver: defaultDriver ?? '',
+        resolvedTab,
+        availableTabs,
+        tabError,
         envSheetId: Boolean(process.env.GOOGLE_SHEET_ID),
         serviceAccountConfigured: Boolean(process.env.GOOGLE_SERVICE_ACCOUNT_KEY),
       },
@@ -30,10 +52,29 @@ export async function PUT(req: NextRequest) {
   try {
     const body = await req.json();
     if (body.sheetUrl !== undefined) {
-      await setSetting(SETTING_KEYS.sheetId, body.sheetUrl ? parseSpreadsheetId(String(body.sheetUrl)) : '');
+      const raw = String(body.sheetUrl);
+      await setSetting(SETTING_KEYS.sheetId, raw ? parseSpreadsheetId(raw) : '');
+      // Remember which tab the URL pointed at, so a blank tab name doesn't
+      // silently fall back to the first tab.
+      await setSetting(SETTING_KEYS.sheetGid, raw ? parseSheetGid(raw) : '');
     }
     if (body.tabName !== undefined) {
-      await setSetting(SETTING_KEYS.sheetTab, String(body.tabName).trim());
+      const tabName = String(body.tabName).trim();
+      // Validate up front — a wrong name otherwise fails later inside an import
+      if (tabName) {
+        const { listTabNames } = await import('@/lib/google-sheets');
+        const tabs = await listTabNames();
+        if (!tabs.includes(tabName)) {
+          return NextResponse.json(
+            { success: false, error: `No tab named "${tabName}". Available tabs: ${tabs.join(', ')}` },
+            { status: 400 }
+          );
+        }
+      }
+      await setSetting(SETTING_KEYS.sheetTab, tabName);
+    }
+    if (body.defaultDriver !== undefined) {
+      await setSetting(SETTING_KEYS.defaultDriver, String(body.defaultDriver).trim());
     }
     return NextResponse.json({ success: true });
   } catch (err) {

@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { sheetsConfigured, getTabName, readRows, writeCells, mapHeaders } from '@/lib/google-sheets';
+import {
+  sheetsConfigured, getTabName, readRows, writeCells, mapHeaders,
+  findHeaderRow, normalizeDay, findUnlabelledOrderColumn,
+} from '@/lib/google-sheets';
+import { getSetting, SETTING_KEYS } from '@/lib/settings';
 
 const VALID_DAYS  = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 const VALID_TYPES = ['Service', 'Delivery', 'Pickup', 'Adhoc'];
@@ -44,15 +48,36 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Sheet has no data rows below the header' }, { status: 400 });
     }
 
-    const header = rows[0];
+    // Headings are often below a title and period line, not on the first row
+    const headerRowIndex = findHeaderRow(rows);
+    const header = rows[headerRowIndex];
     const cols = mapHeaders(header);
-    for (const required of ['driverName', 'customerName', 'day'] as const) {
+    for (const required of ['customerName', 'day'] as const) {
       if (cols[required] === undefined) {
         return NextResponse.json(
-          { success: false, error: `Sheet is missing a required column: ${required} (found headers: ${header.join(', ')})` },
+          { success: false, error: `Sheet is missing a required column: ${required} (headers found on row ${headerRowIndex + 1}: ${header.join(', ')})` },
           { status: 400 }
         );
       }
+    }
+
+    const dataRows = rows.slice(headerRowIndex + 1);
+
+    // Run order often sits in an unlabelled column beside the day
+    const claimed = new Set(Object.values(cols) as number[]);
+    const orderCol = cols.jobOrder ?? findUnlabelledOrderColumn(header, dataRows, claimed);
+
+    // Sheets with no Driver column import to a configured default driver;
+    // dispatch splits the run afterwards.
+    const defaultDriver = await getSetting(SETTING_KEYS.defaultDriver);
+    if (cols.driverName === undefined && !defaultDriver) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'This sheet has no Driver column. Choose a default driver in Import & API → Google Sheets Settings, or add a "Driver" column to the sheet.',
+        },
+        { status: 400 }
+      );
     }
 
     // Ensure an ID column exists; append one to the header row if not.
@@ -60,7 +85,7 @@ export async function POST(req: NextRequest) {
     const pendingWrites: { row: number; col: number; value: string }[] = [];
     if (idCol === undefined) {
       idCol = header.length;
-      pendingWrites.push({ row: 0, col: idCol, value: 'ID' });
+      pendingWrites.push({ row: headerRowIndex, col: idCol, value: 'ID' });
     }
 
     const driverNames = new Set(
@@ -73,27 +98,32 @@ export async function POST(req: NextRequest) {
     const seenIds = new Set<string>();
     const validRows: { rowIndex: number; existingId: string; data: Record<string, unknown> }[] = [];
 
-    for (let i = 1; i < rows.length; i++) {
+    for (let i = headerRowIndex + 1; i < rows.length; i++) {
       const row = rows[i];
-      const sheetRowNum = i + 1; // human-facing (1-based, incl. header)
+      const sheetRowNum = i + 1; // human-facing (1-based, matches the sheet)
 
-      const driverName   = cell(row, cols.driverName);
+      const rawDriver    = cell(row, cols.driverName);
       const customerName = cell(row, cols.customerName);
-      const day          = cell(row, cols.day);
+      const rawDay       = cell(row, cols.day);
 
       // Skip fully empty rows silently
-      if (!driverName && !customerName && !day) continue;
+      if (!rawDriver && !customerName && !rawDay) continue;
 
-      if (!driverName || !driverNames.has(driverName)) {
-        errors.push({ row: sheetRowNum, error: driverName ? `Driver "${driverName}" not found` : 'Driver is required' });
+      const driverName = rawDriver || defaultDriver || '';
+      if (!driverNames.has(driverName)) {
+        errors.push({
+          row: sheetRowNum,
+          error: rawDriver ? `Driver "${rawDriver}" not found` : `Default driver "${driverName}" is not an active driver`,
+        });
         continue;
       }
       if (!customerName) {
         errors.push({ row: sheetRowNum, error: 'Customer name is required' });
         continue;
       }
+      const day = normalizeDay(rawDay);
       if (!VALID_DAYS.includes(day)) {
-        errors.push({ row: sheetRowNum, error: `Day must be one of: ${VALID_DAYS.join(', ')}` });
+        errors.push({ row: sheetRowNum, error: `Unrecognised day "${rawDay}" — expected Mon–Fri` });
         continue;
       }
 
@@ -105,6 +135,12 @@ export async function POST(req: NextRequest) {
 
       let frequency = cell(row, cols.frequency);
       if (frequency === 'Weekly') frequency = '';
+      // "Wk" A/B marks jobs that alternate fortnights. Recorded as Fortnightly;
+      // the first completion anchors which fortnight it falls in.
+      if (!frequency) {
+        const wk = cell(row, cols.weekCycle).toUpperCase();
+        if (wk === 'A' || wk === 'B') frequency = 'Fortnightly';
+      }
       if (!VALID_FREQS.includes(frequency)) {
         errors.push({ row: sheetRowNum, error: 'Frequency must be: Weekly, Fortnightly, 3 Weekly, or 4 Weekly' });
         continue;
@@ -119,7 +155,7 @@ export async function POST(req: NextRequest) {
           customerName,
           day,
           jobType,
-          jobOrder:        Math.max(1, parseInt(cell(row, cols.jobOrder)) || 1),
+          jobOrder:        Math.max(1, parseInt(cell(row, orderCol)) || 1),
           address:         cell(row, cols.address),
           phone:           cell(row, cols.phone),
           items:           cell(row, cols.items),
@@ -141,6 +177,9 @@ export async function POST(req: NextRequest) {
           tab,
           dryRun: true,
           mode,
+          headerRow: headerRowIndex + 1,
+          driverSource: cols.driverName !== undefined ? 'sheet' : `default (${defaultDriver})`,
+          orderColumn: orderCol === undefined ? 'not found — all jobs order 1' : `column ${orderCol + 1}`,
           wouldImport: validRows.length,
           wouldRemove: mode === 'replace' ? existingMasters : undefined,
           newIds: validRows.filter(r => !r.existingId).length,
