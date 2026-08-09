@@ -182,7 +182,8 @@ export function colToA1(col: number): string {
 export type SheetField =
   | 'id' | 'driverName' | 'day' | 'jobOrder' | 'jobType' | 'customerName'
   | 'address' | 'phone' | 'items' | 'quantity' | 'notes' | 'frequency'
-  | 'nextServiceDate' | 'mapLink' | 'callAhead' | 'status' | 'lastCompleted';
+  | 'nextServiceDate' | 'mapLink' | 'callAhead' | 'status' | 'lastCompleted'
+  | 'weekCycle';
 
 const HEADER_SYNONYMS: Record<string, SheetField> = {
   id: 'id', jobid: 'id',
@@ -195,7 +196,8 @@ const HEADER_SYNONYMS: Record<string, SheetField> = {
   phone: 'phone', phonenumber: 'phone', mobile: 'phone', contact: 'phone',
   items: 'items', item: 'items', bins: 'items', unittype: 'items', units: 'items',
   quantity: 'quantity', qty: 'quantity',
-  notes: 'notes', note: 'notes', comments: 'notes',
+  notes: 'notes', note: 'notes', comments: 'notes', comment: 'notes',
+  wk: 'weekCycle', week: 'weekCycle', weekcycle: 'weekCycle',
   frequency: 'frequency', freq: 'frequency',
   nextservice: 'nextServiceDate', nextservicedate: 'nextServiceDate', nextdue: 'nextServiceDate',
   map: 'mapLink', maplink: 'mapLink', mapurl: 'mapLink',
@@ -216,4 +218,57 @@ export function mapHeaders(headerRow: string[]): Partial<Record<SheetField, numb
     if (field !== undefined && map[field] === undefined) map[field] = i;
   });
   return map;
+}
+
+/**
+ * Find the header row. Real run sheets carry a title and a period line above
+ * the headings ("Upcoming Service Details", "For the period 10/8 to 14/8"),
+ * so the headings are rarely on row 0. Picks the first row that maps to a
+ * customer column plus at least two other known fields.
+ */
+export function findHeaderRow(rows: string[][], searchDepth = 15): number {
+  for (let i = 0; i < Math.min(rows.length, searchDepth); i++) {
+    const cols = mapHeaders(rows[i]);
+    if (cols.customerName !== undefined && Object.keys(cols).length >= 3) return i;
+  }
+  return 0;
+}
+
+const DAY_ALIASES: Record<string, string> = {
+  mon: 'Monday', monday: 'Monday',
+  tue: 'Tuesday', tues: 'Tuesday', tuesday: 'Tuesday',
+  wed: 'Wednesday', weds: 'Wednesday', wednesday: 'Wednesday',
+  thu: 'Thursday', thur: 'Thursday', thurs: 'Thursday', thursday: 'Thursday',
+  fri: 'Friday', friday: 'Friday',
+};
+
+/** Normalise "Mon", "Thur", "FRIDAY" → "Monday", "Thursday", "Friday". '' if unrecognised. */
+export function normalizeDay(value: string): string {
+  return DAY_ALIASES[value.trim().toLowerCase().replace(/[^a-z]/g, '')] ?? '';
+}
+
+/**
+ * Find a run-order column that has no heading. Run sheets often number jobs
+ * 1..n per day in an unlabelled column beside the day, which would otherwise
+ * be lost and leave every job at order 1.
+ */
+export function findUnlabelledOrderColumn(
+  header: string[],
+  dataRows: string[][],
+  claimed: Set<number>
+): number | undefined {
+  const width = Math.max(header.length, ...dataRows.slice(0, 50).map(r => r.length));
+  for (let col = 0; col < width; col++) {
+    if (claimed.has(col) || (header[col] ?? '').trim() !== '') continue;
+    let numeric = 0;
+    let filled = 0;
+    for (const row of dataRows.slice(0, 50)) {
+      const cell = (row[col] ?? '').trim();
+      if (!cell) continue;
+      filled++;
+      if (/^\d{1,3}$/.test(cell)) numeric++;
+    }
+    if (filled >= 3 && numeric / filled >= 0.9) return col;
+  }
+  return undefined;
 }

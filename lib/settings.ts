@@ -7,6 +7,9 @@ export const SETTING_KEYS = {
   sheetId: 'sheets.spreadsheetId',
   sheetTab: 'sheets.tabName',
   sheetGid: 'sheets.gid',
+  // Sheets without a Driver column import to this driver; dispatch then splits
+  // the run using the Jobs-tab multi-select move.
+  defaultDriver: 'sheets.defaultDriver',
 } as const;
 
 export async function getSetting(key: string): Promise<string | null> {

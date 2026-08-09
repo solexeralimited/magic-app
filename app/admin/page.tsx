@@ -362,10 +362,10 @@ export default function AdminPage() {
   const [batchDay, setBatchDay]             = useState('');
   const [batchBusy, setBatchBusy]           = useState(false);
   // Sheets settings (Import & API tab)
-  const [sheetsForm, setSheetsForm]         = useState<{ sheetUrl: string; tabName: string } | null>(null);
+  const [sheetsForm, setSheetsForm]         = useState<{ sheetUrl: string; tabName: string; defaultDriver: string } | null>(null);
   const [sheetsSaving, setSheetsSaving]     = useState(false);
   const [dryRunning, setDryRunning]         = useState(false);
-  const [dryRunResult, setDryRunResult]     = useState<{ wouldImport: number; wouldRemove?: number; newIds: number; tab: string; errors: { row: number; error: string }[] } | null>(null);
+  const [dryRunResult, setDryRunResult]     = useState<{ wouldImport: number; wouldRemove?: number; newIds: number; tab: string; headerRow?: number; driverSource?: string; orderColumn?: string; errors: { row: number; error: string }[] } | null>(null);
   const [generating, setGenerating] = useState(false);
   const [promoting, setPromoting]   = useState(false);
   const [sheetsImporting, setSheetsImporting] = useState(false);
@@ -435,8 +435,8 @@ export default function AdminPage() {
   );
 
   const { data: sheetsSettingsData, mutate: mutateSheetsSettings } = useSWR<ApiResponse<{
-    sheetId: string; tabName: string; gid: string; resolvedTab: string; availableTabs: string[];
-    tabError: string; envSheetId: boolean; serviceAccountConfigured: boolean;
+    sheetId: string; tabName: string; gid: string; defaultDriver: string; resolvedTab: string;
+    availableTabs: string[]; tabError: string; envSheetId: boolean; serviceAccountConfigured: boolean;
   }>>(isAdmin && tab === 'import' ? '/api/settings/sheets' : null, fetcher);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
@@ -745,7 +745,11 @@ export default function AdminPage() {
   ];
 
   const sheetsSettings = sheetsSettingsData?.data;
-  const sheetsFormValue = sheetsForm ?? { sheetUrl: sheetsSettings?.sheetId ?? '', tabName: sheetsSettings?.tabName ?? '' };
+  const sheetsFormValue = sheetsForm ?? {
+    sheetUrl: sheetsSettings?.sheetId ?? '',
+    tabName: sheetsSettings?.tabName ?? '',
+    defaultDriver: sheetsSettings?.defaultDriver ?? '',
+  };
 
   // When in all-drivers mode, show alerts across the whole fleet
   const alertSource = selectedDriver === '' ? allDailyJobs : dailyJobs;
@@ -1747,6 +1751,24 @@ export default function AdminPage() {
               ) : null}
             </div>
 
+            <div>
+              <label className={lbl} style={{ color: 'var(--text-tertiary)' }}>
+                Default driver (used when the sheet has no Driver column)
+              </label>
+              <select
+                className={inp}
+                style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: '#fff' }}
+                value={sheetsFormValue.defaultDriver}
+                onChange={e => setSheetsForm({ ...sheetsFormValue, defaultDriver: e.target.value })}
+              >
+                <option value="">None — sheet must have a Driver column</option>
+                {drivers.filter(d => d.isActive).map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+              </select>
+              <p className="text-xs mt-1.5" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                Everything imports to this driver, then split the run with Jobs → Select → Move.
+              </p>
+            </div>
+
             {/* Which tab will actually be read */}
             {sheetsSettings?.resolvedTab && (
               <div className="rounded-xl px-4 py-2.5" style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)' }}>
@@ -1786,6 +1808,9 @@ export default function AdminPage() {
               <div className="rounded-xl p-4 space-y-2" style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)' }}>
                 <p className="text-sm font-semibold" style={{ color: '#34D399', fontFamily: 'var(--font-dm-sans)' }}>
                   Reading tab &quot;{dryRunResult.tab}&quot; — nothing was changed
+                </p>
+                <p className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                  Headings found on row {dryRunResult.headerRow} · driver from {dryRunResult.driverSource} · run order from {dryRunResult.orderColumn}
                 </p>
                 <p className="text-xs" style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-dm-sans)' }}>
                   Import would load <strong style={{ color: '#fff' }}>{dryRunResult.wouldImport}</strong> jobs
