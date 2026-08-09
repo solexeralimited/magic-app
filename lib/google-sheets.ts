@@ -1,4 +1,5 @@
 import { createSign } from 'node:crypto';
+import { getSetting, SETTING_KEYS } from './settings';
 
 // Lightweight Google Sheets REST client using a service account.
 // Avoids the googleapis SDK (~10MB) — we only need token exchange + values read/write.
@@ -10,8 +11,10 @@ interface ServiceAccountKey {
   private_key: string;
 }
 
-export function sheetsConfigured(): boolean {
-  return Boolean(process.env.GOOGLE_SERVICE_ACCOUNT_KEY && process.env.GOOGLE_SHEET_ID);
+export async function sheetsConfigured(): Promise<boolean> {
+  if (!process.env.GOOGLE_SERVICE_ACCOUNT_KEY) return false;
+  if (process.env.GOOGLE_SHEET_ID) return true;
+  return Boolean(await getSetting(SETTING_KEYS.sheetId));
 }
 
 function getServiceAccountKey(): ServiceAccountKey {
@@ -24,9 +27,12 @@ function getServiceAccountKey(): ServiceAccountKey {
   return key;
 }
 
-function getSpreadsheetId(): string {
+async function getSpreadsheetId(): Promise<string> {
+  // Settings screen takes precedence so the office can repoint the sheet without a redeploy
+  const configured = await getSetting(SETTING_KEYS.sheetId);
+  if (configured) return configured;
   const id = process.env.GOOGLE_SHEET_ID;
-  if (!id) throw new Error('GOOGLE_SHEET_ID is not set');
+  if (!id) throw new Error('No Google Sheet configured (set it in Import & API → Sheets Settings)');
   return id;
 }
 
@@ -70,7 +76,7 @@ async function getAccessToken(): Promise<string> {
 
 async function sheetsFetch(path: string, init?: RequestInit): Promise<Record<string, unknown>> {
   const token = await getAccessToken();
-  const res = await fetch(`${SHEETS_BASE}/${getSpreadsheetId()}${path}`, {
+  const res = await fetch(`${SHEETS_BASE}/${await getSpreadsheetId()}${path}`, {
     ...init,
     headers: {
       Authorization: `Bearer ${token}`,
@@ -89,7 +95,7 @@ async function sheetsFetch(path: string, init?: RequestInit): Promise<Record<str
 // ─── Sheet operations ────────────────────────────────────────────────────────
 
 export async function getTabName(): Promise<string> {
-  const configured = process.env.GOOGLE_SHEET_TAB;
+  const configured = (await getSetting(SETTING_KEYS.sheetTab)) || process.env.GOOGLE_SHEET_TAB;
   if (configured) return configured;
   const meta = await sheetsFetch('?fields=sheets.properties.title');
   const sheets = meta.sheets as { properties: { title: string } }[] | undefined;
@@ -148,9 +154,9 @@ const HEADER_SYNONYMS: Record<string, SheetField> = {
   order: 'jobOrder', joborder: 'jobOrder', runorder: 'jobOrder',
   type: 'jobType', jobtype: 'jobType',
   customer: 'customerName', customername: 'customerName', name: 'customerName',
-  address: 'address', street: 'address',
+  address: 'address', street: 'address', shippingaddress: 'address', siteaddress: 'address', deliveryaddress: 'address',
   phone: 'phone', phonenumber: 'phone', mobile: 'phone', contact: 'phone',
-  items: 'items', item: 'items', bins: 'items',
+  items: 'items', item: 'items', bins: 'items', unittype: 'items', units: 'items',
   quantity: 'quantity', qty: 'quantity',
   notes: 'notes', note: 'notes', comments: 'notes',
   frequency: 'frequency', freq: 'frequency',

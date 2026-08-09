@@ -37,6 +37,7 @@ export function statusLabel(status: Job['status']): string {
     Done: 'Done',
     CouldNotAccess: 'Could Not Access',
     Issue: 'Issue',
+    NotRequired: 'Not Required',
   };
   return map[status];
 }
@@ -47,6 +48,7 @@ export function statusColor(status: Job['status']): string {
     Done: 'bg-green-100 text-green-800',
     CouldNotAccess: 'bg-orange-100 text-orange-800',
     Issue: 'bg-red-100 text-red-800',
+    NotRequired: 'bg-gray-100 text-gray-600',
   };
   return map[status];
 }

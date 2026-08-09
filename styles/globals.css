@@ -125,6 +125,7 @@
   .badge-done     { background: rgba(16,185,129,0.14); color: #047857; }
   .badge-issue    { background: rgba(239,68,68,0.14);  color: #B91C1C; }
   .badge-cant     { background: rgba(249,115,22,0.14); color: #C2410C; }
+  .badge-notreq   { background: rgba(107,114,128,0.14); color: #4B5563; }
 
   /* TB Brand badge */
   .tb-badge {

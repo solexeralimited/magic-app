@@ -100,7 +100,17 @@ export async function updateJobStatus(
     },
   });
 
-  if (status === 'Done') {
+  // Daily/Tomorrow jobs are copies (id "tmr-<masterId>"); the recurrence schedule
+  // lives on the master, so the advanced date must land there too or the job
+  // will regenerate every week regardless of frequency.
+  if (status === 'Done' && existing.runType !== 'Master' && existing.id.startsWith('tmr-')) {
+    await prisma.job.updateMany({
+      where: { id: existing.id.slice(4), runType: 'Master' },
+      data: { nextServiceDate },
+    });
+  }
+
+  if (status === 'Done' || status === 'NotRequired') {
     await prisma.runLog.upsert({
       where: { jobId },
       create: {
@@ -128,6 +138,10 @@ export function isJobDueForDate(job: Job, targetDate: Date): boolean {
   if (!job.nextServiceDate) return true;
   const dueDate = new Date(job.nextServiceDate);
   return dueDate <= targetDate;
+}
+
+export async function tomorrowRunExists(): Promise<number> {
+  return prisma.job.count({ where: { runType: 'Tomorrow' } });
 }
 
 export async function generateTomorrowRuns(): Promise<Job[]> {

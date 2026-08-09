@@ -87,6 +87,25 @@ export async function PATCH(req: NextRequest) {
       );
       return NextResponse.json({ success: true });
     }
+    if (body.action === 'batch-move') {
+      const { ids, driverName, day } = body as { action: string; ids: string[]; driverName?: string; day?: string };
+      if (!Array.isArray(ids) || ids.length === 0 || (!driverName && !day)) {
+        return NextResponse.json({ success: false, error: 'ids and driverName or day required' }, { status: 400 });
+      }
+      await prisma.job.updateMany({
+        where: { id: { in: ids }, runType: 'Master' },
+        data: { ...(driverName ? { driverName } : {}), ...(day ? { day } : {}) },
+      });
+      return NextResponse.json({ success: true, data: { moved: ids.length } });
+    }
+    if (body.action === 'batch-delete') {
+      const { ids } = body as { action: string; ids: string[] };
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return NextResponse.json({ success: false, error: 'ids required' }, { status: 400 });
+      }
+      const { count } = await prisma.job.deleteMany({ where: { id: { in: ids }, runType: 'Master' } });
+      return NextResponse.json({ success: true, data: { deleted: count } });
+    }
     return NextResponse.json({ success: false, error: 'Unknown action' }, { status: 400 });
   } catch (err) {
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });

@@ -57,13 +57,13 @@ model Job {
   sheetRowId             String    @default("") // permanent ID linking to a Google Sheets row
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
-  runLogEntry            RunLog?
 }
 
+// Deliberately no FK to Job: history must survive after daily runs are
+// deleted at the next promote (and after data resets).
 model RunLog {
   id             String   @id @default(cuid())
   jobId          String   @unique
-  job            Job      @relation(fields: [jobId], references: [id])
   driverName     String
   customerName   String
   address        String
@@ -113,4 +113,10 @@ model ApiKey {
   createdAt  DateTime  @default(now())
   lastUsedAt DateTime?
   isActive   Boolean   @default(true)
+}
+
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @default(now()) @updatedAt
 }

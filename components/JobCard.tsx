@@ -16,6 +16,7 @@ const statusConfig = {
   Done:           { label: 'Done',      accent: '#10B981', badge: 'badge-done'    },
   Issue:          { label: 'Issue',     accent: '#EF4444', badge: 'badge-issue'   },
   CouldNotAccess: { label: 'No Access', accent: '#F97316', badge: 'badge-cant'    },
+  NotRequired:    { label: 'Not Required', accent: '#6B7280', badge: 'badge-notreq' },
 };
 
 const jobTypeColors: Record<string, { border: string; bg: string; text: string }> = {
