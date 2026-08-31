@@ -434,6 +434,13 @@ export default function AdminPage() {
     fetcher, { refreshInterval: 15_000 }
   );
 
+  const { data: systemData } = useSWR<ApiResponse<{
+    platform: { name: string; detail: string };
+    database: { host: string; port: string; name: string; provider: string; ssl: boolean } | null;
+    googleServiceAccount: string;
+    configured: Record<string, boolean | string>;
+  }>>(isAdmin && tab === 'import' ? '/api/admin/system' : null, fetcher);
+
   const { data: sheetsSettingsData, mutate: mutateSheetsSettings } = useSWR<ApiResponse<{
     sheetId: string; tabName: string; gid: string; defaultDriver: string; driverTabs: boolean;
     resolvedTab: string; availableTabs: string[]; tabError: string; envSheetId: boolean;
@@ -1710,6 +1717,69 @@ export default function AdminPage() {
 
         {/* ── IMPORT & API ───────────────────────────────────── */}
         {tab === 'import' && (<>
+
+          {/* System — what this deployment is connected to */}
+          {systemData?.data && (
+            <div className="card-shell p-5 space-y-3">
+              <div>
+                <h2 className="font-display font-bold flex items-center gap-2" style={{ color: '#fff', fontFamily: 'var(--font-sora)', fontSize: '16px' }}>
+                  <Shield className="w-4 h-4" style={{ color: 'var(--amber)' }} /> System
+                </h2>
+                <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                  Where this app runs and what it is connected to. Secret values are never shown.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="rounded-xl px-4 py-3" style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)' }}>
+                  <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)', fontSize: '10px' }}>Hosting</p>
+                  <p className="text-sm font-semibold" style={{ color: '#fff', fontFamily: 'var(--font-dm-sans)' }}>{systemData.data.platform.name}</p>
+                  {systemData.data.platform.detail && (
+                    <p className="text-xs mt-0.5 break-all" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>{systemData.data.platform.detail}</p>
+                  )}
+                </div>
+
+                <div className="rounded-xl px-4 py-3" style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)' }}>
+                  <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)', fontSize: '10px' }}>Database</p>
+                  {systemData.data.database ? (<>
+                    <p className="text-sm font-semibold" style={{ color: '#fff', fontFamily: 'var(--font-dm-sans)' }}>
+                      {systemData.data.database.provider}
+                      {systemData.data.database.ssl && <span className="badge badge-done ml-1.5" style={{ fontSize: '9px' }}>SSL</span>}
+                    </p>
+                    <p className="text-xs mt-0.5 break-all" style={{ color: 'var(--text-tertiary)', fontFamily: 'monospace' }}>
+                      {systemData.data.database.host}:{systemData.data.database.port}/{systemData.data.database.name}
+                    </p>
+                  </>) : (
+                    <p className="text-sm" style={{ color: '#F87171', fontFamily: 'var(--font-dm-sans)' }}>DATABASE_URL not set</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-1.5">
+                {([
+                  ['Database',       systemData.data.configured.databaseUrl],
+                  ['Google Sheets',  systemData.data.configured.googleServiceKey],
+                  ['Login secret',   systemData.data.configured.nextAuthSecret],
+                  ['Cron secret',    systemData.data.configured.cronSecret],
+                  ['Email (Resend)', systemData.data.configured.resendApiKey],
+                  ['Push notifs',    systemData.data.configured.pushNotifications],
+                ] as [string, boolean][]).map(([label, ok]) => (
+                  <span
+                    key={label}
+                    className={`badge ${ok ? 'badge-done' : 'badge-issue'}`}
+                    style={{ fontSize: '10px' }}
+                  >
+                    {ok ? '✓' : '✗'} {label}
+                  </span>
+                ))}
+              </div>
+              {!systemData.data.configured.cronSecret && (
+                <p className="text-xs" style={{ color: '#FCA5A5', fontFamily: 'var(--font-dm-sans)' }}>
+                  CRON_SECRET is unset — the scheduled run endpoints accept unauthenticated calls.
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Google Sheets settings */}
           <div className="card-shell p-5 space-y-4">
