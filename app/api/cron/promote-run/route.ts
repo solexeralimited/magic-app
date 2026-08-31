@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { promoteToDailyRuns, getAllPushSubscriptions } from '@/lib/db';
+import { promoteToDailyRuns, getAllPushSubscriptions, NothingToPromoteError } from '@/lib/db';
 import { sendPushNotification } from '@/lib/notifications';
 
 function authorized(req: NextRequest): boolean {
@@ -16,10 +16,6 @@ export async function GET(req: NextRequest) {
 
   try {
     const jobs = await promoteToDailyRuns();
-
-    if (jobs.length === 0) {
-      return NextResponse.json({ success: true, data: { count: 0, skipped: 'no jobs to promote' } });
-    }
 
     void (async () => {
       const subs = await getAllPushSubscriptions();
@@ -38,6 +34,10 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ success: true, data: { count: jobs.length } });
   } catch (err) {
+    // Nothing prepared (weekends, or a run already promoted) is normal, not a failure
+    if (err instanceof NothingToPromoteError) {
+      return NextResponse.json({ success: true, data: { count: 0, skipped: 'no prepared run' } });
+    }
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
   }
 }

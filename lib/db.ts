@@ -182,7 +182,20 @@ export async function generateTomorrowRuns(): Promise<Job[]> {
   return due;
 }
 
+export class NothingToPromoteError extends Error {
+  constructor() {
+    super('No prepared run to promote — generate tomorrow\'s run first.');
+    this.name = 'NothingToPromoteError';
+  }
+}
+
 export async function promoteToDailyRuns(): Promise<Job[]> {
+  // Refuse when there is nothing to promote. Otherwise the delete below wipes
+  // the run drivers are working on and replaces it with nothing — which is what
+  // a weekend cron, or a second click of Promote, would otherwise do.
+  const waiting = await prisma.job.count({ where: { runType: 'Tomorrow' } });
+  if (waiting === 0) throw new NothingToPromoteError();
+
   // Archive any remaining daily runs that weren't completed
   await prisma.job.deleteMany({ where: { runType: 'Daily' } });
 
