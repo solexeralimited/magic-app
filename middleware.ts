@@ -24,6 +24,13 @@ export default withAuth(
         const { pathname } = req.nextUrl;
         // Public routes
         if (pathname.startsWith('/login') || pathname.startsWith('/api/auth') || pathname === '/api/drivers/names') return true;
+        // Uptime probe — reports connectivity only, no data
+        if (pathname === '/api/health') return true;
+        // Machine callers carry a bearer credential, not a session cookie:
+        // the scheduler (CRON_SECRET) and integrations (API key). Each route
+        // verifies its own credential — without this they are redirected to
+        // /login and never run at all.
+        if (pathname.startsWith('/api/cron/') || pathname === '/api/jobs/bulk') return true;
         // All other routes require a token
         return !!token;
       },

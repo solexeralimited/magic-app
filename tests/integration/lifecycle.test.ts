@@ -88,14 +88,44 @@ describe.skipIf(!DB)('run lifecycle (integration)', async () => {
   });
 
   it('promote clears completed daily jobs WITHOUT a foreign-key error, history survives (regression)', async () => {
-    const master = await masterJob();
-    await copyOf(master, 'Daily');
-    await updateJobStatus(`tmr-${master.id}`, 'Done'); // creates a RunLog row pointing at the daily job
+    const yesterday = await masterJob();
+    await copyOf(yesterday, 'Daily');
+    await updateJobStatus(`tmr-${yesterday.id}`, 'Done'); // creates a RunLog row pointing at the daily job
+
+    // A prepared run must exist or promote refuses — the point here is that
+    // clearing the *completed* daily job doesn't hit the old FK constraint.
+    const today = await masterJob({ customerName: 'Tomorrow Co', address: '9 Next St' });
+    await copyOf(today, 'Tomorrow', { customerName: 'Tomorrow Co', address: '9 Next St' });
 
     await expect(promoteToDailyRuns()).resolves.toBeDefined(); // used to throw: RunLog_jobId_fkey RESTRICT
 
-    expect(await prisma.job.count({ where: { runType: 'Daily' } })).toBe(0);
-    expect(await prisma.runLog.count()).toBe(1); // history outlives the job row
+    const daily = await prisma.job.findMany({ where: { runType: 'Daily' } });
+    expect(daily).toHaveLength(1);
+    expect(daily[0].customerName).toBe('Tomorrow Co'); // yesterday's completed job is gone
+    expect(await prisma.runLog.count()).toBe(1);       // its history outlives it
+  });
+
+  it('promote refuses when nothing is prepared, leaving today untouched (regression)', async () => {
+    const { NothingToPromoteError } = await import('@/lib/db');
+    const master = await masterJob();
+    await copyOf(master, 'Daily'); // a run drivers are working on
+    expect(await prisma.job.count({ where: { runType: 'Tomorrow' } })).toBe(0);
+
+    // Used to delete the Daily run and promote nothing — a weekend cron or a
+    // second click of Promote wiped the day.
+    await expect(promoteToDailyRuns()).rejects.toBeInstanceOf(NothingToPromoteError);
+    expect(await prisma.job.count({ where: { runType: 'Daily' } })).toBe(1);
+  });
+
+  it('promoting twice does not destroy the run', async () => {
+    const master = await masterJob();
+    await copyOf(master, 'Tomorrow');
+
+    await promoteToDailyRuns();
+    expect(await prisma.job.count({ where: { runType: 'Daily' } })).toBe(1);
+
+    await expect(promoteToDailyRuns()).rejects.toThrow();
+    expect(await prisma.job.count({ where: { runType: 'Daily' } })).toBe(1); // still there
   });
 
   it('promote flips Tomorrow → Daily', async () => {
