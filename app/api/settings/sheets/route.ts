@@ -14,17 +14,25 @@ export async function GET() {
       getSetting(SETTING_KEYS.driverTabs),
     ]);
 
-    // Show which tab will actually be used, and what else is available
+    // Show which tab will actually be used, and what else is available.
+    // In driver-tab mode the single-tab setting is unused, so a stale or wrong
+    // tab name there must not surface as an error.
     let resolvedTab = '';
     let availableTabs: string[] = [];
     let tabError = '';
     if (sheetId || process.env.GOOGLE_SHEET_ID) {
+      const { getTabName, listTabNames } = await import('@/lib/google-sheets');
       try {
-        const [{ getTabName, listTabNames }] = [await import('@/lib/google-sheets')];
         availableTabs = await listTabNames();
-        resolvedTab = await getTabName();
       } catch (e) {
         tabError = String(e instanceof Error ? e.message : e);
+      }
+      if (driverTabs !== '1' && !tabError) {
+        try {
+          resolvedTab = await getTabName();
+        } catch (e) {
+          tabError = String(e instanceof Error ? e.message : e);
+        }
       }
     }
 
@@ -60,15 +68,22 @@ export async function PUT(req: NextRequest) {
       // silently fall back to the first tab.
       await setSetting(SETTING_KEYS.sheetGid, raw ? parseSheetGid(raw) : '');
     }
+    // Driver-tab mode ignores the single-tab setting, so a leftover value there
+    // must not block saving — otherwise the field is greyed out in the UI while
+    // still failing validation, with no way to fix it.
+    const usingDriverTabs = body.driverTabs !== undefined
+      ? Boolean(body.driverTabs)
+      : (await getSetting(SETTING_KEYS.driverTabs)) === '1';
+
     if (body.tabName !== undefined) {
       const tabName = String(body.tabName).trim();
       // Validate up front — a wrong name otherwise fails later inside an import
-      if (tabName) {
+      if (tabName && !usingDriverTabs) {
         const { listTabNames } = await import('@/lib/google-sheets');
         const tabs = await listTabNames();
         if (!tabs.includes(tabName)) {
           return NextResponse.json(
-            { success: false, error: `No tab named "${tabName}". Available tabs: ${tabs.join(', ')}` },
+            { success: false, error: `This sheet has no tab named "${tabName}". Tabs in this sheet: ${tabs.map(t => `"${t}"`).join(', ')}` },
             { status: 400 }
           );
         }
