@@ -361,6 +361,9 @@ export default function AdminPage() {
   const [batchDriver, setBatchDriver]       = useState('');
   const [batchDay, setBatchDay]             = useState('');
   const [batchBusy, setBatchBusy]           = useState(false);
+  // Danger zone: full data reset
+  const [resetConfirm, setResetConfirm]     = useState('');
+  const [resetting, setResetting]           = useState(false);
   // Sheets settings (Import & API tab)
   const [sheetsForm, setSheetsForm]         = useState<{ sheetUrl: string; tabName: string; defaultDriver: string; driverTabs: boolean } | null>(null);
   const [sheetsSaving, setSheetsSaving]     = useState(false);
@@ -712,6 +715,20 @@ export default function AdminPage() {
     flash(j.success ? `✓ Pulled ${j.data.added} job(s) forward into tomorrow's run${j.data.skipped ? ` (${j.data.skipped} already there)` : ''}` : `✗ ${j.error}`, j.success);
     if (j.success) setJobsSelected(new Set());
     setBatchBusy(false);
+  };
+
+  const handleReset = async () => {
+    if (resetConfirm !== 'RESET') return;
+    if (!confirm('This permanently deletes ALL jobs, run history, messages and the notification log.\n\nDrivers, logins, API keys and Sheets settings are kept.\n\nContinue?')) return;
+    setResetting(true);
+    const j = await call('POST', '/api/admin/reset', { confirm: 'RESET' });
+    if (j.success) {
+      flash(`✓ Data cleared — ${j.data.jobs} jobs, ${j.data.history} history entries, ${j.data.messages} messages removed. Import from Sheets to start fresh.`, true);
+      setResetConfirm('');
+      setSortableJobs([]);
+      mutateMaster(); mutateDaily(); mutateAllDaily(); mutateUnscheduled();
+    } else flash(`✗ ${j.error}`, false);
+    setResetting(false);
   };
 
   const handleSaveSheetsSettings = async () => {
@@ -2179,6 +2196,38 @@ export default function AdminPage() {
                   )}
                 </div>
               ))}
+            </div>
+          </div>
+
+          {/* Danger zone — full data reset */}
+          <div className="card-shell p-5 space-y-4" style={{ border: '1px solid rgba(239,68,68,0.3)' }}>
+            <div>
+              <h2 className="font-display font-bold flex items-center gap-2" style={{ color: '#F87171', fontFamily: 'var(--font-sora)', fontSize: '16px' }}>
+                <AlertTriangle className="w-4 h-4" /> Danger Zone — Start Over
+              </h2>
+              <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                Deletes all jobs, run history, messages and the notification log.
+                Drivers, PINs, admin logins, API keys and Sheets settings are kept —
+                after the reset, just Import from Sheets to reload the schedule.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <input
+                className={inp}
+                style={{ background: 'var(--shell)', border: '1px solid rgba(239,68,68,0.3)', color: '#fff', flex: 1 }}
+                placeholder='Type "RESET" to enable the button'
+                value={resetConfirm}
+                onChange={e => setResetConfirm(e.target.value)}
+              />
+              <button
+                onClick={handleReset}
+                disabled={resetting || resetConfirm !== 'RESET'}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold flex-shrink-0 transition-all disabled:opacity-40"
+                style={{ background: '#EF4444', color: '#fff', fontFamily: 'var(--font-dm-sans)' }}
+              >
+                {resetting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                Clear All Data
+              </button>
             </div>
           </div>
         </>)}
