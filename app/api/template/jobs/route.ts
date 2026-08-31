@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/auth';
 
 const HEADERS = [
   'driverName', 'day', 'jobOrder', 'jobType', 'customerName',
@@ -19,6 +20,8 @@ function esc(v: string) {
 }
 
 export async function GET() {
+  const session = await requireAuth('admin');
+  if (!session) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   const rows = [HEADERS.join(','), ...EXAMPLES.map(r => r.map(esc).join(','))];
   return new NextResponse(rows.join('\r\n'), {
     headers: {

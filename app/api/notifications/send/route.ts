@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPushSubscription, getAllPushSubscriptions, saveMessage } from '@/lib/db';
 import { sendPushNotification } from '@/lib/notifications';
+import { requireAuth } from '@/lib/auth';
 
 export async function POST(req: NextRequest) {
+  const session = await requireAuth('admin');
+  if (!session) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   try {
     const { to, title, body, message } = await req.json() as {
       to: string;
