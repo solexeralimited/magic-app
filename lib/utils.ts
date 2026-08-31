@@ -90,6 +90,27 @@ export function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+// The business runs on New Zealand calendar days, but the server runs on UTC —
+// which is 12–13 hours behind. Between midnight and midday in Auckland the UTC
+// date is still *yesterday*, so deriving "tomorrow" from the server clock
+// silently produces the wrong day for most of the NZ working morning.
+export const NZ_TZ = 'Pacific/Auckland';
+
+/** Today's calendar date in New Zealand, as a date-only value at UTC midnight. */
+export function nzToday(now: Date = new Date()): Date {
+  const ymd = new Intl.DateTimeFormat('en-CA', {
+    timeZone: NZ_TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(now);
+  return new Date(`${ymd}T00:00:00Z`);
+}
+
+/** Tomorrow's calendar date in New Zealand. Handles daylight saving by construction. */
+export function nzTomorrow(now: Date = new Date()): Date {
+  const d = nzToday(now);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d;
+}
+
 export function isWeekend(date: Date): boolean {
   const d = date.getDay();
   return d === 0 || d === 6;

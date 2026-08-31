@@ -1,5 +1,5 @@
 import { prisma } from './prisma';
-import { isJobDueForDate } from './utils';
+import { isJobDueForDate, nzToday, nzTomorrow } from './utils';
 import { Job, Driver, RunLogEntry, AdminMessage, NotificationLog, PushSubscriptionData } from '@/types';
 
 export { isJobDueForDate };
@@ -83,7 +83,9 @@ export async function updateJobStatus(
   let nextServiceDate = existing.nextServiceDate;
 
   if (status === 'Done') {
-    const base = existing.nextServiceDate ? new Date(existing.nextServiceDate) : now;
+    // Same NZ-vs-UTC trap: a job completed before midday NZ would otherwise
+    // schedule its next service from yesterday's date.
+    const base = existing.nextServiceDate ? new Date(existing.nextServiceDate) : nzToday(now);
     switch (existing.frequency) {
       case 'Fortnightly': base.setDate(base.getDate() + 14); break;
       case '3 Weekly':    base.setDate(base.getDate() + 21); break;
@@ -141,9 +143,10 @@ export async function tomorrowRunExists(): Promise<number> {
 }
 
 export async function generateTomorrowRuns(): Promise<Job[]> {
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const dayOfWeek = tomorrow.getDay();
+  // Derived in NZ time: on UTC the date is still yesterday for the whole NZ
+  // morning, which would generate today's run instead of tomorrow's.
+  const tomorrow = nzTomorrow();
+  const dayOfWeek = tomorrow.getUTCDay();
   if (dayOfWeek === 0 || dayOfWeek === 6) {
     throw new Error('Tomorrow is a weekend — no runs generated.');
   }
