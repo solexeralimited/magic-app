@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireAuth } from '@/lib/auth';
 
 export async function GET() {
+  const session = await requireAuth('admin');
+  if (!session) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   try {
     const jobs = await prisma.job.findMany({
       where: { runType: 'Unscheduled' },
@@ -15,6 +18,8 @@ export async function GET() {
 
 // Move a job into the Task Bar (mark as Unscheduled)
 export async function POST(req: NextRequest) {
+  const session = await requireAuth('admin');
+  if (!session) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   try {
     const { id } = await req.json();
     await prisma.job.update({ where: { id }, data: { runType: 'Unscheduled' } });
@@ -26,6 +31,8 @@ export async function POST(req: NextRequest) {
 
 // Assign a Task Bar job to a driver's daily run
 export async function PATCH(req: NextRequest) {
+  const session = await requireAuth('admin');
+  if (!session) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   try {
     const { id, driverName, jobOrder } = await req.json();
     if (!id || !driverName) {

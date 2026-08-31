@@ -104,3 +104,20 @@ export async function requireAuth(role?: UserRole) {
   if (role && session.user.role !== role) return null;
   return session;
 }
+
+/**
+ * The driver whose data this request may touch.
+ * Admins act on anyone's; a driver is pinned to their own name regardless of
+ * what the request asks for, so a `?driver=` parameter can't be used to read
+ * or change someone else's run. Returns null when not signed in.
+ */
+export async function resolveDriverScope(requested?: string | null): Promise<
+  { driverName: string | null; isAdmin: boolean } | null
+> {
+  const session = await getSession();
+  if (!session) return null;
+  if (session.user.role === 'admin') {
+    return { driverName: requested ?? null, isAdmin: true };
+  }
+  return { driverName: session.user.name ?? null, isAdmin: false };
+}

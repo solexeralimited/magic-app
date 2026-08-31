@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireAuth } from '@/lib/auth';
 
 export async function GET(req: NextRequest) {
+  const session = await requireAuth('admin');
+  if (!session) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   const driver = req.nextUrl.searchParams.get('driver');
   const day = req.nextUrl.searchParams.get('day');
   try {
@@ -20,6 +23,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const session = await requireAuth('admin');
+  if (!session) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   try {
     const body = await req.json();
     const job = await prisma.job.create({
@@ -49,6 +54,8 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
+  const session = await requireAuth('admin');
+  if (!session) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   try {
     const body = await req.json();
     const { id, ...data } = body;
@@ -78,6 +85,8 @@ export async function PUT(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const session = await requireAuth('admin');
+  if (!session) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   try {
     const body = await req.json();
     if (body.action === 'reorder') {
@@ -113,6 +122,8 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  const session = await requireAuth('admin');
+  if (!session) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   try {
     const { id } = await req.json();
     await prisma.job.delete({ where: { id } });
