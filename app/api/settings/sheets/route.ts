@@ -20,6 +20,9 @@ export async function GET() {
     let resolvedTab = '';
     let availableTabs: string[] = [];
     let tabError = '';
+    const { getServiceAccountEmail } = await import('@/lib/google-sheets');
+    const serviceAccountEmail = getServiceAccountEmail();
+
     if (sheetId || process.env.GOOGLE_SHEET_ID) {
       const { getTabName, listTabNames } = await import('@/lib/google-sheets');
       try {
@@ -49,6 +52,7 @@ export async function GET() {
         tabError,
         envSheetId: Boolean(process.env.GOOGLE_SHEET_ID),
         serviceAccountConfigured: Boolean(process.env.GOOGLE_SERVICE_ACCOUNT_KEY),
+        serviceAccountEmail,
       },
     });
   } catch (err) {

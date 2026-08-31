@@ -27,6 +27,18 @@ function getServiceAccountKey(): ServiceAccountKey {
   return key;
 }
 
+/**
+ * The service account's own address. Not a secret (the private key is) — the
+ * sheet has to be shared with it, so it must be visible in the admin UI.
+ */
+export function getServiceAccountEmail(): string {
+  try {
+    return getServiceAccountKey().client_email;
+  } catch {
+    return '';
+  }
+}
+
 async function getSpreadsheetId(): Promise<string> {
   // Settings screen takes precedence so the office can repoint the sheet without a redeploy
   const configured = await getSetting(SETTING_KEYS.sheetId);
@@ -87,6 +99,17 @@ async function sheetsFetch(path: string, init?: RequestInit): Promise<Record<str
   const data = await res.json();
   if (!res.ok) {
     const msg = (data as { error?: { message?: string } }).error?.message ?? res.statusText;
+    // 403 almost always means the spreadsheet was never shared with the service
+    // account, which the raw message does nothing to explain.
+    if (res.status === 403) {
+      const email = getServiceAccountEmail();
+      throw new Error(
+        `Google denied access to this spreadsheet. Open it in Google Sheets, click Share, and give Editor access to ${email || 'the service account address'} (Editor is needed so job IDs and results can be written back).`
+      );
+    }
+    if (res.status === 404) {
+      throw new Error('No spreadsheet found with that ID — check the Sheet URL in these settings.');
+    }
     throw new Error(`Sheets API error (${res.status}): ${msg}`);
   }
   return data;

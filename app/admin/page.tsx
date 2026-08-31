@@ -437,7 +437,7 @@ export default function AdminPage() {
   const { data: sheetsSettingsData, mutate: mutateSheetsSettings } = useSWR<ApiResponse<{
     sheetId: string; tabName: string; gid: string; defaultDriver: string; driverTabs: boolean;
     resolvedTab: string; availableTabs: string[]; tabError: string; envSheetId: boolean;
-    serviceAccountConfigured: boolean;
+    serviceAccountConfigured: boolean; serviceAccountEmail: string;
   }>>(isAdmin && tab === 'import' ? '/api/settings/sheets' : null, fetcher);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
@@ -1726,6 +1726,34 @@ export default function AdminPage() {
               <div className="rounded-xl px-4 py-3" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
                 <p className="text-xs font-semibold" style={{ color: '#FCA5A5', fontFamily: 'var(--font-dm-sans)' }}>
                   ⚠️ No Google service account key is configured on the server (GOOGLE_SERVICE_ACCOUNT_KEY) — Sheets sync won&apos;t work until that&apos;s set.
+                </p>
+              </div>
+            )}
+
+            {/* The sheet must be shared with this address or every call 403s */}
+            {sheetsSettings?.serviceAccountEmail && (
+              <div className="rounded-xl p-4" style={{ background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.25)' }}>
+                <p className="text-xs font-semibold mb-1.5" style={{ color: '#A78BFA', fontFamily: 'var(--font-dm-sans)' }}>
+                  Share your sheet with this address (Editor access)
+                </p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 text-xs break-all" style={{ color: '#fff', fontFamily: 'monospace' }}>
+                    {sheetsSettings.serviceAccountEmail}
+                  </code>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(sheetsSettings.serviceAccountEmail);
+                      flash('✓ Service account address copied', true);
+                    }}
+                    className="flex-shrink-0 flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
+                    style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: 'var(--text-secondary)', fontFamily: 'var(--font-dm-sans)' }}
+                  >
+                    <Copy className="w-3.5 h-3.5" /> Copy
+                  </button>
+                </div>
+                <p className="text-xs mt-2" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                  In Google Sheets: Share → paste this address → set to <strong>Editor</strong> → Send.
+                  Editor is required so job IDs and completion results can be written back.
                 </p>
               </div>
             )}
