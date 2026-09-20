@@ -486,9 +486,16 @@ export default function AdminPage() {
 
   // Per-driver summary for "All Drivers" view
   const allDailyJobs = allDailyData?.data ?? [];
+  const filteredAllDailyJobs = allDailyJobs.filter(j => {
+    if (dailyMapLinkSearch && !j.mapLink?.toLowerCase().includes(dailyMapLinkSearch.toLowerCase())) return false;
+    if (dailyCallAheadFilter === 'yes' && !j.callAhead) return false;
+    if (dailyCallAheadFilter === 'no' && j.callAhead) return false;
+    return true;
+  });
+
   const driverSummaries = (() => {
     const map = new Map<string, { total: number; done: number; issues: number; cantAccess: number }>();
-    for (const j of allDailyJobs) {
+    for (const j of filteredAllDailyJobs) {
       const prev = map.get(j.driverName) ?? { total: 0, done: 0, issues: 0, cantAccess: 0 };
       prev.total += 1;
       if (j.status === 'Done') prev.done += 1;
@@ -777,8 +784,14 @@ export default function AdminPage() {
 
   // When in all-drivers mode, show alerts across the whole fleet
   const alertSource = selectedDriver === '' ? allDailyJobs : dailyJobs;
-  const issueJobs      = alertSource.filter(j => j.status === 'Issue');
-  const cantAccessJobs = alertSource.filter(j => j.status === 'CouldNotAccess');
+  const filteredAlertSource = alertSource.filter(j => {
+    if (dailyMapLinkSearch && !j.mapLink?.toLowerCase().includes(dailyMapLinkSearch.toLowerCase())) return false;
+    if (dailyCallAheadFilter === 'yes' && !j.callAhead) return false;
+    if (dailyCallAheadFilter === 'no' && j.callAhead) return false;
+    return true;
+  });
+  const issueJobs      = filteredAlertSource.filter(j => j.status === 'Issue');
+  const cantAccessJobs = filteredAlertSource.filter(j => j.status === 'CouldNotAccess');
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--shell)' }}>
@@ -796,14 +809,14 @@ export default function AdminPage() {
         }
       />
 
-      {/* Flash message */}
+      {/* Flash message — sticky at bottom */}
       {actionMsg && (
         <div
-          className="px-4 py-2.5 text-sm font-semibold text-center transition-all"
+          className="fixed bottom-0 left-0 right-0 px-4 py-2.5 text-sm font-semibold text-center transition-all z-40"
           style={{
             background: actionMsg.ok ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
             color: actionMsg.ok ? '#34D399' : '#F87171',
-            borderBottom: `1px solid ${actionMsg.ok ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}`,
+            borderTop: `1px solid ${actionMsg.ok ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}`,
             fontFamily: 'var(--font-dm-sans)',
           }}
         >
@@ -834,7 +847,7 @@ export default function AdminPage() {
         </div>
       </div>
 
-      <main className="max-w-5xl mx-auto p-4 pb-12 space-y-4">
+      <main className="max-w-5xl mx-auto p-4 pb-20 space-y-4">
 
         {/* ── DASHBOARD ──────────────────────────────────────────── */}
         {tab === 'dashboard' && (<>
@@ -945,12 +958,38 @@ export default function AdminPage() {
             </select>
           </div>
 
+          {/* Dashboard filters — MapLink and Call Ahead */}
+          <div className="card-shell p-4 space-y-3">
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: 'var(--text-tertiary)' }} />
+                <input
+                  type="search"
+                  value={dailyMapLinkSearch}
+                  onChange={e => setDailyMapLinkSearch(e.target.value)}
+                  placeholder="Filter by map link…"
+                  className="w-full pl-9 pr-4 py-2.5 rounded-xl text-sm outline-none"
+                  style={{ background: 'var(--shell-raised)', border: '1px solid var(--shell-border)', color: '#fff', fontFamily: 'var(--font-dm-sans)' }}
+                />
+              </div>
+              <select value={dailyCallAheadFilter} onChange={e => setDailyCallAheadFilter(e.target.value as any)} className={`${inp}`} style={{ background: 'var(--shell-raised)', border: '1px solid var(--shell-border)', color: '#fff' }}>
+                <option value="all">All jobs</option>
+                <option value="yes">Call ahead required</option>
+                <option value="no">No call ahead</option>
+              </select>
+            </div>
+          </div>
+
           {/* All-drivers progress grid */}
           {selectedDriver === '' && (
             <div className="space-y-2">
               {allDailyJobs.length === 0 ? (
                 <p className="text-xs text-center py-4" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
                   No daily run active — generate and promote a run first
+                </p>
+              ) : filteredAllDailyJobs.length === 0 ? (
+                <p className="text-xs text-center py-4" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                  No jobs match filter
                 </p>
               ) : driverSummaries.map(d => {
                 const pct = d.total > 0 ? Math.round((d.done / d.total) * 100) : 0;
