@@ -337,6 +337,7 @@ export default function AdminPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
   const [tab, setTab]             = useState<Tab>('dashboard');
+  const [dashboardSubTab, setDashboardSubTab] = useState<'overview' | 'generate' | 'promote'>('overview');
   const [selectedDriver, setSelectedDriver] = useState('');
   const [filterDay, setFilterDay]   = useState('');
   const [search, setSearch]         = useState('');
@@ -828,60 +829,97 @@ export default function AdminPage() {
         {/* ── DASHBOARD ──────────────────────────────────────────── */}
         {tab === 'dashboard' && (<>
 
-          {/* Generate & Import buttons */}
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              onClick={handleGenerate}
-              disabled={generating}
-              className="flex items-center justify-center gap-2 p-4 rounded-2xl font-semibold text-sm transition-all active:scale-95 disabled:opacity-50"
-              style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)', color: 'var(--amber)', fontFamily: 'var(--font-dm-sans)' }}
-            >
-              {generating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5" />}
-              Generate Tomorrow
-            </button>
-            <button
-              onClick={handleSheetsImport}
-              disabled={sheetsImporting}
-              className="flex items-center justify-center gap-2 p-4 rounded-2xl font-semibold text-sm transition-all active:scale-95 disabled:opacity-50"
-              style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.2)', color: '#60A5FA', fontFamily: 'var(--font-dm-sans)' }}
-            >
-              {sheetsImporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}
-              Import from Sheets
-            </button>
+          {/* Dashboard subtabs */}
+          <div className="card-shell">
+            <div className="flex border-b" style={{ borderColor: 'var(--shell-border)' }}>
+              {(['overview', 'generate', 'promote'] as const).map(subTab => (
+                <button
+                  key={subTab}
+                  onClick={() => setDashboardSubTab(subTab)}
+                  className="flex-1 px-4 py-3 text-xs font-semibold transition-colors relative"
+                  style={{
+                    color: dashboardSubTab === subTab ? 'var(--amber)' : 'var(--text-tertiary)',
+                    fontFamily: 'var(--font-dm-sans)',
+                  }}
+                >
+                  {subTab === 'overview' && 'Overview'}
+                  {subTab === 'generate' && 'Generate'}
+                  {subTab === 'promote' && 'Promote'}
+                  {dashboardSubTab === subTab && (
+                    <div className="absolute bottom-0 left-0 right-0 h-0.5" style={{ background: 'var(--amber)' }} />
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/* Overview subtab */}
+            {dashboardSubTab === 'overview' && (
+              <div className="p-5 space-y-3">
+                <p className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                  Generate, promote, and sync your runs. Select tabs below to access each feature.
+                </p>
+              </div>
+            )}
+
+            {/* Generate subtab */}
+            {dashboardSubTab === 'generate' && (
+              <div className="p-5 space-y-3">
+                <button
+                  onClick={handleGenerate}
+                  disabled={generating}
+                  className="w-full flex items-center justify-center gap-2 p-4 rounded-2xl font-semibold text-sm transition-all active:scale-95 disabled:opacity-50"
+                  style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)', color: 'var(--amber)', fontFamily: 'var(--font-dm-sans)' }}
+                >
+                  {generating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5" />}
+                  Generate Tomorrow's Run
+                </button>
+                <button
+                  onClick={handleSheetsImport}
+                  disabled={sheetsImporting}
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-all disabled:opacity-50"
+                  style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}
+                >
+                  {sheetsImporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}
+                  Import from Sheets
+                </button>
+              </div>
+            )}
+
+            {/* Promote subtab */}
+            {dashboardSubTab === 'promote' && (
+              <div className="p-5 space-y-3">
+                <button
+                  onClick={handlePromote}
+                  disabled={promoting}
+                  className="w-full flex items-center justify-center gap-2 p-4 rounded-2xl font-semibold text-sm transition-all active:scale-95 disabled:opacity-50"
+                  style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', color: '#34D399', fontFamily: 'var(--font-dm-sans)' }}
+                >
+                  {promoting ? <Loader2 className="w-5 h-5 animate-spin" /> : <ArrowRight className="w-5 h-5" />}
+                  Promote to Daily
+                </button>
+                <button
+                  onClick={handleSheetsWriteback}
+                  disabled={sheetsSyncing}
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-all disabled:opacity-50"
+                  style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}
+                >
+                  {sheetsSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                  Sync Results to Sheets
+                </button>
+                <button
+                  onClick={handleDailySummary}
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-all"
+                  style={{ background: 'var(--shell-raised)', border: '1px solid var(--shell-border)', color: 'var(--text-secondary)', fontFamily: 'var(--font-dm-sans)' }}
+                >
+                  <BarChart3 className="w-4 h-4" />
+                  Send Daily Summary Email
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Tomorrow's run — dispatch working copy, editable until promoted */}
           <TomorrowDispatch drivers={drivers} onFlash={flash} />
-
-          {/* Promote & Sync buttons */}
-          <div className="space-y-3">
-            <button
-              onClick={handlePromote}
-              disabled={promoting}
-              className="w-full flex items-center justify-center gap-2 p-4 rounded-2xl font-semibold text-sm transition-all active:scale-95 disabled:opacity-50"
-              style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', color: '#34D399', fontFamily: 'var(--font-dm-sans)' }}
-            >
-              {promoting ? <Loader2 className="w-5 h-5 animate-spin" /> : <ArrowRight className="w-5 h-5" />}
-              Promote to Daily
-            </button>
-            <button
-              onClick={handleSheetsWriteback}
-              disabled={sheetsSyncing}
-              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-all disabled:opacity-50"
-              style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}
-            >
-              {sheetsSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-              Sync Results to Sheets
-            </button>
-            <button
-              onClick={handleDailySummary}
-              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-all"
-              style={{ background: 'var(--shell-raised)', border: '1px solid var(--shell-border)', color: 'var(--text-secondary)', fontFamily: 'var(--font-dm-sans)' }}
-            >
-              <BarChart3 className="w-4 h-4" />
-              Send Daily Summary Email
-            </button>
-          </div>
 
           {/* Driver picker */}
           <div className="card-shell p-4">
