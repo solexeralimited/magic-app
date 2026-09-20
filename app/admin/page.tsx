@@ -24,7 +24,7 @@ import { qtyLabel } from '@/components/JobCard';
 import { Job, RunLogEntry, NotificationLog, AdminMessage, ApiResponse } from '@/types';
 import { computeStats, statusColor, statusLabel, formatTime, formatDate } from '@/lib/utils';
 
-type Tab = 'dashboard' | 'jobs' | 'drivers' | 'users' | 'history' | 'messages' | 'notifications' | 'import';
+type Tab = 'dashboard' | 'generate' | 'promote' | 'jobs' | 'drivers' | 'users' | 'history' | 'messages' | 'notifications' | 'import';
 
 interface ApiKeyRecord {
   id: string;
@@ -750,14 +750,16 @@ export default function AdminPage() {
   };
 
   const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
-    { id: 'dashboard',     label: 'Dashboard',   icon: BarChart3 },
-    { id: 'jobs',          label: 'Jobs',         icon: List      },
-    { id: 'drivers',       label: 'Drivers',      icon: Truck     },
-    { id: 'users',         label: 'Admin Users',  icon: Shield    },
-    { id: 'history',       label: 'History',      icon: Clock     },
-    { id: 'messages',      label: 'Message',      icon: Send      },
-    { id: 'notifications', label: 'Notif. Log',   icon: Bell      },
-    { id: 'import',        label: 'Import & API', icon: Upload    },
+    { id: 'dashboard',     label: 'Dashboard',      icon: BarChart3 },
+    { id: 'generate',      label: 'Generate',       icon: Play      },
+    { id: 'promote',       label: 'Promote',        icon: ArrowRight },
+    { id: 'jobs',          label: 'Jobs',           icon: List      },
+    { id: 'drivers',       label: 'Drivers',        icon: Truck     },
+    { id: 'users',         label: 'Admin Users',    icon: Shield    },
+    { id: 'history',       label: 'History',        icon: Clock     },
+    { id: 'messages',      label: 'Message',        icon: Send      },
+    { id: 'notifications', label: 'Notif. Log',     icon: Bell      },
+    { id: 'import',        label: 'Import & API',   icon: Upload    },
   ];
 
   const sheetsSettings = sheetsSettingsData?.data;
@@ -826,61 +828,6 @@ export default function AdminPage() {
 
         {/* ── DASHBOARD ──────────────────────────────────────────── */}
         {tab === 'dashboard' && (<>
-
-          {/* Run controls */}
-          <div className="card-shell p-5">
-            <p className="text-xs font-semibold uppercase tracking-widest mb-4" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
-              Run Management
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                onClick={handleGenerate}
-                disabled={generating}
-                className="flex flex-col items-center gap-2 p-4 rounded-2xl font-semibold text-sm transition-all active:scale-95 disabled:opacity-50"
-                style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)', color: 'var(--amber)', fontFamily: 'var(--font-dm-sans)' }}
-              >
-                {generating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5" />}
-                Generate Tomorrow
-              </button>
-              <button
-                onClick={handlePromote}
-                disabled={promoting}
-                className="flex flex-col items-center gap-2 p-4 rounded-2xl font-semibold text-sm transition-all active:scale-95 disabled:opacity-50"
-                style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', color: '#34D399', fontFamily: 'var(--font-dm-sans)' }}
-              >
-                {promoting ? <Loader2 className="w-5 h-5 animate-spin" /> : <ArrowRight className="w-5 h-5" />}
-                Promote to Daily
-              </button>
-            </div>
-            <button
-              onClick={handleDailySummary}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-semibold transition-all mt-1"
-              style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}
-            >
-              <BarChart3 className="w-3.5 h-3.5" />
-              Send End-of-Day Summary Email
-            </button>
-            <div className="grid grid-cols-2 gap-3 mt-1">
-              <button
-                onClick={handleSheetsImport}
-                disabled={sheetsImporting}
-                className="flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-semibold transition-all disabled:opacity-50"
-                style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}
-              >
-                {sheetsImporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileSpreadsheet className="w-3.5 h-3.5" />}
-                Import from Sheets
-              </button>
-              <button
-                onClick={handleSheetsWriteback}
-                disabled={sheetsSyncing}
-                className="flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-semibold transition-all disabled:opacity-50"
-                style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}
-              >
-                {sheetsSyncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-                Sync Results to Sheets
-              </button>
-            </div>
-          </div>
 
           {/* Tomorrow's run — dispatch working copy, editable until promoted */}
           <TomorrowDispatch drivers={drivers} onFlash={flash} />
@@ -1163,6 +1110,138 @@ export default function AdminPage() {
               </div>
             </div>
           )}
+        </>)}
+
+        {/* ── GENERATE TOMORROW ──────────────────────────────────── */}
+        {tab === 'generate' && (<>
+          <div className="space-y-4">
+            {/* Generate button */}
+            <div className="card-shell p-6">
+              <h2 className="font-display font-bold mb-2" style={{ color: '#fff', fontFamily: 'var(--font-sora)', fontSize: '18px' }}>Generate Tomorrow</h2>
+              <p className="text-xs mb-4" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                Build tomorrow's run from the master schedule. Jobs are only included if their day matches and their next service date has arrived.
+              </p>
+              <button
+                onClick={handleGenerate}
+                disabled={generating}
+                className="w-full flex items-center justify-center gap-2 p-4 rounded-2xl font-semibold text-sm transition-all active:scale-95 disabled:opacity-50"
+                style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)', color: 'var(--amber)', fontFamily: 'var(--font-dm-sans)' }}
+              >
+                {generating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5" />}
+                Generate Tomorrow's Run
+              </button>
+            </div>
+
+            {/* Import from Sheets */}
+            <div className="card-shell p-6">
+              <h2 className="font-display font-bold mb-2" style={{ color: '#fff', fontFamily: 'var(--font-sora)', fontSize: '18px' }}>Import from Google Sheets</h2>
+              <p className="text-xs mb-4" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                Load the master schedule from your configured Google Sheet. This replaces all existing jobs with what's in the sheet.
+              </p>
+              <button
+                onClick={handleSheetsImport}
+                disabled={sheetsImporting}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-all disabled:opacity-50"
+                style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}
+              >
+                {sheetsImporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}
+                Import from Sheets
+              </button>
+            </div>
+
+            {/* Dry run / preview */}
+            <div className="card-shell p-6">
+              <h2 className="font-display font-bold mb-2" style={{ color: '#fff', fontFamily: 'var(--font-sora)', fontSize: '18px' }}>Preview Import</h2>
+              <p className="text-xs mb-4" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                See what will be imported without making changes.
+              </p>
+              <button
+                onClick={handleDryRun}
+                disabled={dryRunning}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-all disabled:opacity-50"
+                style={{ background: 'var(--shell-raised)', border: '1px solid var(--shell-border)', color: 'var(--text-secondary)', fontFamily: 'var(--font-dm-sans)' }}
+              >
+                {dryRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
+                Preview Import (Dry Run)
+              </button>
+              {dryRunResult && (
+                <div className="mt-4 pt-4 border-t" style={{ borderColor: 'var(--shell-border)' }}>
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <p style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>Would import</p>
+                      <p className="font-bold mt-0.5" style={{ color: 'var(--amber)', fontFamily: 'var(--font-sora)', fontSize: '16px' }}>{dryRunResult.wouldImport}</p>
+                    </div>
+                    <div>
+                      <p style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>New IDs</p>
+                      <p className="font-bold mt-0.5" style={{ color: '#34D399', fontFamily: 'var(--font-sora)', fontSize: '16px' }}>{dryRunResult.newIds}</p>
+                    </div>
+                  </div>
+                  {dryRunResult.errors && dryRunResult.errors.length > 0 && (
+                    <div className="mt-3 p-3 rounded-lg" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+                      <p style={{ color: '#FCA5A5', fontSize: '12px', fontFamily: 'var(--font-dm-sans)' }}>
+                        {dryRunResult.errors.length} row{dryRunResult.errors.length !== 1 ? 's' : ''} would be skipped
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </>)}
+
+        {/* ── PROMOTE TO DAILY ───────────────────────────────────── */}
+        {tab === 'promote' && (<>
+          <div className="space-y-4">
+            {/* Promote button */}
+            <div className="card-shell p-6">
+              <h2 className="font-display font-bold mb-2" style={{ color: '#fff', fontFamily: 'var(--font-sora)', fontSize: '18px' }}>Promote to Daily</h2>
+              <p className="text-xs mb-4" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                Make tomorrow's prepared run live for drivers. This promotes the Tomorrow run to Daily and notifies drivers.
+              </p>
+              <button
+                onClick={handlePromote}
+                disabled={promoting}
+                className="w-full flex items-center justify-center gap-2 p-4 rounded-2xl font-semibold text-sm transition-all active:scale-95 disabled:opacity-50"
+                style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', color: '#34D399', fontFamily: 'var(--font-dm-sans)' }}
+              >
+                {promoting ? <Loader2 className="w-5 h-5 animate-spin" /> : <ArrowRight className="w-5 h-5" />}
+                Promote to Daily
+              </button>
+            </div>
+
+            {/* Sync Results to Sheets */}
+            <div className="card-shell p-6">
+              <h2 className="font-display font-bold mb-2" style={{ color: '#fff', fontFamily: 'var(--font-sora)', fontSize: '18px' }}>Sync Results to Sheets</h2>
+              <p className="text-xs mb-4" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                Write completed job statuses back to your Google Sheet for reporting and audit trail.
+              </p>
+              <button
+                onClick={handleSheetsWriteback}
+                disabled={sheetsSyncing}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-all disabled:opacity-50"
+                style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}
+              >
+                {sheetsSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                Sync Results to Sheets
+              </button>
+            </div>
+
+            {/* Daily Summary Email */}
+            <div className="card-shell p-6">
+              <h2 className="font-display font-bold mb-2" style={{ color: '#fff', fontFamily: 'var(--font-sora)', fontSize: '18px' }}>Daily Summary</h2>
+              <p className="text-xs mb-4" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                Send an end-of-day summary email with today's results to your admin inbox.
+              </p>
+              <button
+                onClick={handleDailySummary}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-all"
+                style={{ background: 'var(--shell-raised)', border: '1px solid var(--shell-border)', color: 'var(--text-secondary)', fontFamily: 'var(--font-dm-sans)' }}
+              >
+                <BarChart3 className="w-4 h-4" />
+                Send End-of-Day Summary
+              </button>
+            </div>
+          </div>
         </>)}
 
         {/* ── JOBS ───────────────────────────────────────────────── */}
