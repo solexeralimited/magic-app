@@ -107,6 +107,22 @@ export async function POST(req: NextRequest) {
       const header = rows[headerRowIdx];
       const cols = mapHeaders(header);
 
+      // Check required columns
+      // In driver-tab mode, driverName comes from tab name, but we still validate other required columns
+      // In single-tab mode, driverName must be in the sheet
+      const requiredCols = driverTabs
+        ? ['customerName', 'day'] as const
+        : ['driverName', 'customerName', 'day'] as const;
+
+      let missingRequired = false;
+      for (const required of requiredCols) {
+        if (cols[required] === undefined) {
+          allErrors.push({ tab, row: headerRowIdx + 1, error: `Missing required column: ${required}` });
+          missingRequired = true;
+        }
+      }
+      if (missingRequired) continue;
+
       // Ensure ID column exists
       let idCol = cols.id;
       const pendingWrites: { row: number; col: number; value: string }[] = [];
