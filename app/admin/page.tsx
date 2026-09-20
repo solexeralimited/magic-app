@@ -341,7 +341,11 @@ export default function AdminPage() {
   const [selectedDriver, setSelectedDriver] = useState('');
   const [filterDay, setFilterDay]   = useState('');
   const [search, setSearch]         = useState('');
+  const [mapLinkSearch, setMapLinkSearch] = useState('');
+  const [callAheadFilter, setCallAheadFilter] = useState<'all' | 'yes' | 'no'>('all');
   const [dailySearch, setDailySearch] = useState('');
+  const [dailyMapLinkSearch, setDailyMapLinkSearch] = useState('');
+  const [dailyCallAheadFilter, setDailyCallAheadFilter] = useState<'all' | 'yes' | 'no'>('all');
   // History filters
   const [histSearch, setHistSearch]       = useState('');
   const [histDriver, setHistDriver]       = useState('');
@@ -468,10 +472,14 @@ export default function AdminPage() {
 
   const masterJobsRaw = masterData?.data ?? [];
   masterJobsRef.current = masterJobsRaw;
-  const masterJobs = masterJobsRaw.filter(j =>
-    !search || j.customerName.toLowerCase().includes(search.toLowerCase()) || j.address.toLowerCase().includes(search.toLowerCase())
-  );
-  const displayJobs = search ? masterJobs : sortableJobs.length > 0 ? sortableJobs : masterJobsRaw;
+  const masterJobs = masterJobsRaw.filter(j => {
+    if (search && !j.customerName.toLowerCase().includes(search.toLowerCase()) && !j.address.toLowerCase().includes(search.toLowerCase())) return false;
+    if (mapLinkSearch && !j.mapLink?.toLowerCase().includes(mapLinkSearch.toLowerCase())) return false;
+    if (callAheadFilter === 'yes' && !j.callAhead) return false;
+    if (callAheadFilter === 'no' && j.callAhead) return false;
+    return true;
+  });
+  const displayJobs = (search || mapLinkSearch || callAheadFilter !== 'all') ? masterJobs : sortableJobs.length > 0 ? sortableJobs : masterJobsRaw;
 
   const dailyJobs = dailyData?.data ?? [];
   const unscheduledJobs = unscheduledData?.data ?? [];
@@ -499,11 +507,13 @@ export default function AdminPage() {
     if (histJobType && e.jobType !== histJobType) return false;
     return true;
   });
-  const filteredDailyJobs = dailyJobs.filter(j =>
-    !dailySearch ||
-    j.customerName.toLowerCase().includes(dailySearch.toLowerCase()) ||
-    j.address.toLowerCase().includes(dailySearch.toLowerCase())
-  );
+  const filteredDailyJobs = dailyJobs.filter(j => {
+    if (dailySearch && !j.customerName.toLowerCase().includes(dailySearch.toLowerCase()) && !j.address.toLowerCase().includes(dailySearch.toLowerCase())) return false;
+    if (dailyMapLinkSearch && !j.mapLink?.toLowerCase().includes(dailyMapLinkSearch.toLowerCase())) return false;
+    if (dailyCallAheadFilter === 'yes' && !j.callAhead) return false;
+    if (dailyCallAheadFilter === 'no' && j.callAhead) return false;
+    return true;
+  });
 
   const flash = (text: string, ok: boolean) => {
     setActionMsg({ text, ok });
@@ -1137,16 +1147,38 @@ export default function AdminPage() {
                   </button>
                 </div>
               </div>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: 'var(--text-tertiary)' }} />
-                <input
-                  type="search"
-                  value={dailySearch}
-                  onChange={e => setDailySearch(e.target.value)}
-                  placeholder="Search customer or address…"
-                  className="w-full pl-9 pr-4 py-2.5 rounded-xl text-sm outline-none"
-                  style={{ background: 'var(--shell-raised)', border: '1px solid var(--shell-border)', color: '#fff', fontFamily: 'var(--font-dm-sans)' }}
-                />
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: 'var(--text-tertiary)' }} />
+                    <input
+                      type="search"
+                      value={dailySearch}
+                      onChange={e => setDailySearch(e.target.value)}
+                      placeholder="Search customer or address…"
+                      className="w-full pl-9 pr-4 py-2.5 rounded-xl text-sm outline-none"
+                      style={{ background: 'var(--shell-raised)', border: '1px solid var(--shell-border)', color: '#fff', fontFamily: 'var(--font-dm-sans)' }}
+                    />
+                  </div>
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: 'var(--text-tertiary)' }} />
+                    <input
+                      type="search"
+                      value={dailyMapLinkSearch}
+                      onChange={e => setDailyMapLinkSearch(e.target.value)}
+                      placeholder="Search map link…"
+                      className="w-full pl-9 pr-4 py-2.5 rounded-xl text-sm outline-none"
+                      style={{ background: 'var(--shell-raised)', border: '1px solid var(--shell-border)', color: '#fff', fontFamily: 'var(--font-dm-sans)' }}
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <select value={dailyCallAheadFilter} onChange={e => setDailyCallAheadFilter(e.target.value as any)} className={`${inp}`} style={{ background: 'var(--shell-raised)', border: '1px solid var(--shell-border)', color: '#fff', flex: 1 }}>
+                    <option value="all">All jobs</option>
+                    <option value="yes">Call ahead required</option>
+                    <option value="no">No call ahead</option>
+                  </select>
+                </div>
               </div>
               {selectMode && (
                 <p className="text-xs px-1" style={{ color: 'var(--amber)', fontFamily: 'var(--font-dm-sans)' }}>
@@ -1217,6 +1249,16 @@ export default function AdminPage() {
                   onChange={e => setSearch(e.target.value)}
                 />
               </div>
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: 'var(--text-tertiary)' }} />
+                <input
+                  className={inp}
+                  style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: '#fff', paddingLeft: '36px' }}
+                  placeholder="Search map link…"
+                  value={mapLinkSearch}
+                  onChange={e => setMapLinkSearch(e.target.value)}
+                />
+              </div>
               <button
                 onClick={() => setJobModal({ open: true })}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold flex-shrink-0 transition-all"
@@ -1233,6 +1275,11 @@ export default function AdminPage() {
               <select value={filterDay} onChange={e => setFilterDay(e.target.value)} className={`${inp} flex-1`} style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: '#fff' }}>
                 <option value="">All Days</option>
                 {DAYS.map(d => <option key={d}>{d}</option>)}
+              </select>
+              <select value={callAheadFilter} onChange={e => setCallAheadFilter(e.target.value as any)} className={`${inp} flex-1`} style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: '#fff' }}>
+                <option value="all">All jobs</option>
+                <option value="yes">Call ahead required</option>
+                <option value="no">No call ahead</option>
               </select>
             </div>
             <div className="flex items-center justify-between">
