@@ -70,18 +70,27 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
-      // Find the header row by looking for required columns
+      // Find the header row by looking for rows with actual column headers
+      // Skip rows that look like titles (single text spanning entire row)
       let headerRowIdx = -1;
-      for (let i = 0; i < Math.min(5, rows.length); i++) {
-        const cols = mapHeaders(rows[i]);
-        if (cols.customerName !== undefined && cols.day !== undefined) {
+      for (let i = 0; i < Math.min(10, rows.length); i++) {
+        const row = rows[i];
+
+        // Skip rows with very few non-empty cells (likely titles)
+        const nonEmpty = row.filter(cell => cell.trim().length > 0).length;
+        if (nonEmpty < 3) continue;
+
+        const cols = mapHeaders(row);
+        // Header row must have at least 2 expected columns
+        const matchingCols = Object.values(cols).length;
+        if (matchingCols >= 2) {
           headerRowIdx = i;
           break;
         }
       }
 
       if (headerRowIdx === -1) {
-        allErrors.push({ tab, row: 1, error: 'Could not find header row with required columns (customerName, day)' });
+        allErrors.push({ tab, row: 1, error: `Could not find header row. Searched ${Math.min(10, rows.length)} rows. Ensure sheet has proper column headers (Customer Name, Day, etc.)` });
         continue;
       }
 
