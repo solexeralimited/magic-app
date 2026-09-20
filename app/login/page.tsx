@@ -3,6 +3,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Eye, EyeOff, Loader2, ChevronDown } from 'lucide-react';
+import Footer from '@/components/Footer';
 
 type Mode = 'driver' | 'admin';
 
@@ -256,9 +257,9 @@ function LoginForm() {
         </div>
       </div>
 
-      <p className="relative z-10 mt-8 text-xs animate-fade-up-2" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
-        © {new Date().getFullYear()} Thunderbox · Secure Login
-      </p>
+      <div className="relative z-10 mt-8 animate-fade-up-2">
+        <Footer compact showLink />
+      </div>
     </div>
   );
 }

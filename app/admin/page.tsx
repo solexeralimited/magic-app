@@ -2032,7 +2032,7 @@ export default function AdminPage() {
           </div>
         </>)}
 
-        <Footer />
+        <Footer showLink />
       </main>
 
       {/* Sticky reallocation bar */}
