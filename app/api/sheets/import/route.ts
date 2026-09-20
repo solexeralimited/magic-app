@@ -8,6 +8,20 @@ const VALID_DAYS  = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 const VALID_TYPES = ['Service', 'Delivery', 'Pickup', 'Adhoc'];
 const VALID_FREQS = ['', 'Weekly', 'Fortnightly', '3 Weekly', '4 Weekly'];
 
+// Map abbreviated days to full names
+const DAY_ABBREV_MAP: Record<string, string> = {
+  'mon': 'Monday',
+  'tue': 'Tuesday',
+  'wed': 'Wednesday',
+  'thu': 'Thursday',
+  'fri': 'Friday',
+};
+
+function normalizeDay(dayInput: string): string {
+  const normalized = dayInput.trim().toLowerCase();
+  return DAY_ABBREV_MAP[normalized] || dayInput.trim();
+}
+
 /**
  * POST /api/sheets/import — import master jobs from the configured Google Sheet.
  * Supports both single-tab mode and driver-tab mode (reads from tabs matching driver names).
@@ -38,7 +52,10 @@ export async function POST(req: NextRequest) {
     let tabs: string[] = [];
     if (driverTabs) {
       const allTabs = await listTabNames();
+      console.log(`[Sheets Import] Driver-tab mode ON. Found tabs: ${allTabs.map(t => `"${t}"`).join(', ')}`);
+      console.log(`[Sheets Import] Active drivers: ${[...driverNames].map(d => `"${d}"`).join(', ')}`);
       tabs = allTabs.filter(t => driverNames.has(t.trim()));
+      console.log(`[Sheets Import] Filtered to matching tabs: ${tabs.map(t => `"${t}"`).join(', ')}`);
       if (tabs.length === 0) {
         return NextResponse.json({
           success: false,
@@ -47,6 +64,7 @@ export async function POST(req: NextRequest) {
       }
     } else {
       const tabName = await getTabName();
+      console.log(`[Sheets Import] Driver-tab mode OFF. Using single tab: "${tabName}"`);
       tabs = [tabName];
     }
 
@@ -142,7 +160,7 @@ export async function POST(req: NextRequest) {
 
         const driverName = tabDriverName || cell(row, cols.driverName);
         const customerName = cell(row, cols.customerName);
-        const day = cell(row, cols.day);
+        let day = normalizeDay(cell(row, cols.day));
 
         // Skip empty rows
         if (!driverName && !customerName && !day) continue;
@@ -159,7 +177,7 @@ export async function POST(req: NextRequest) {
         }
 
         if (!VALID_DAYS.includes(day)) {
-          allErrors.push({ tab, row: sheetRowNum, error: `Day must be one of: ${VALID_DAYS.join(', ')}` });
+          allErrors.push({ tab, row: sheetRowNum, error: `Day must be one of: ${VALID_DAYS.join(', ')} (or Mon/Tue/Wed/Thu/Fri)` });
           continue;
         }
 
