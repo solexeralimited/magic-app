@@ -2,13 +2,23 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
 
+function getDefaultDate(): string {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  return tomorrow.toISOString().split('T')[0];
+}
+
 // Dispatch working-copy editing: everything here touches ONLY runType 'Tomorrow',
 // so operational changes never leak into the Master schedule.
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    const url = new URL(req.url);
+    const dateParam = url.searchParams.get('date');
+    const queryDate = dateParam || getDefaultDate();
+
     const jobs = await prisma.job.findMany({
-      where: { runType: 'Tomorrow' },
+      where: { runType: 'Tomorrow', scheduledDate: queryDate },
       orderBy: [{ driverName: 'asc' }, { jobOrder: 'asc' }],
     });
     return NextResponse.json({ success: true, data: jobs });
@@ -64,9 +74,13 @@ export async function POST(req: NextRequest) {
       if (!j.driverName || !j.customerName) {
         return NextResponse.json({ success: false, error: 'driverName and customerName required' }, { status: 400 });
       }
+
+      const scheduledDate = j.scheduledDate || getDefaultDate();
+      const isTomorrow = scheduledDate === getDefaultDate();
+
       const order = j.jobOrder
         ? parseInt(j.jobOrder)
-        : (await prisma.job.count({ where: { driverName: j.driverName, runType: 'Tomorrow' } })) + 1;
+        : (await prisma.job.count({ where: { driverName: j.driverName, runType: 'Tomorrow', scheduledDate } })) + 1;
       const created = await prisma.job.create({
         data: {
           driverName: j.driverName,
@@ -85,6 +99,7 @@ export async function POST(req: NextRequest) {
           callAhead: j.callAhead || false,
           status: 'Pending',
           runType: 'Tomorrow',
+          scheduledDate,
         },
       });
       return NextResponse.json({ success: true, data: created });

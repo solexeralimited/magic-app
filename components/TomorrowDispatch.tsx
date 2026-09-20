@@ -7,6 +7,12 @@ import { qtyLabel } from './JobCard';
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
+function getDefaultDate(): string {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  return tomorrow.toISOString().split('T')[0];
+}
+
 interface DriverOption { id: string; name: string; isActive: boolean }
 
 interface TomorrowDispatchProps {
@@ -30,7 +36,7 @@ export default function TomorrowDispatch({ drivers, onFlash }: TomorrowDispatchP
   const [reassignTo, setReassignTo] = useState('');
   const [busy, setBusy] = useState(false);
   const [showAdhoc, setShowAdhoc] = useState(false);
-  const [adhoc, setAdhoc] = useState({ driverName: '', customerName: '', address: '', jobType: 'Adhoc', items: '', quantity: '', notes: '', phone: '', callAhead: false });
+  const [adhoc, setAdhoc] = useState({ driverName: '', customerName: '', address: '', jobType: 'Adhoc', items: '', quantity: '', notes: '', phone: '', callAhead: false, scheduledDate: getDefaultDate() });
 
   if (jobs.length === 0) return null;
 
@@ -87,10 +93,11 @@ export default function TomorrowDispatch({ drivers, onFlash }: TomorrowDispatchP
     if (!adhoc.driverName || !adhoc.customerName) return;
     setBusy(true);
     const j = await call('POST', { job: adhoc });
-    onFlash(j.success ? `✓ Adhoc job added to ${adhoc.driverName}'s run for tomorrow` : `✗ ${j.error}`, j.success);
+    const dateDisplay = new Date(adhoc.scheduledDate).toLocaleDateString('en-NZ');
+    onFlash(j.success ? `✓ Adhoc job scheduled for ${adhoc.driverName} on ${dateDisplay}` : `✗ ${j.error}`, j.success);
     if (j.success) {
       setShowAdhoc(false);
-      setAdhoc({ driverName: '', customerName: '', address: '', jobType: 'Adhoc', items: '', quantity: '', notes: '', phone: '', callAhead: false });
+      setAdhoc({ driverName: '', customerName: '', address: '', jobType: 'Adhoc', items: '', quantity: '', notes: '', phone: '', callAhead: false, scheduledDate: getDefaultDate() });
       mutate();
     }
     setBusy(false);
@@ -226,7 +233,7 @@ export default function TomorrowDispatch({ drivers, onFlash }: TomorrowDispatchP
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}>
           <div className="w-full sm:max-w-lg rounded-t-3xl sm:rounded-2xl max-h-[92vh] overflow-y-auto shadow-2xl" style={{ background: '#fff' }}>
             <div className="sticky top-0 flex items-center justify-between px-5 py-4 z-10" style={{ background: '#fff', borderBottom: '1px solid var(--surface-border)' }}>
-              <h2 className="font-bold text-base" style={{ fontFamily: 'var(--font-sora)', color: 'var(--text-primary)' }}>Add Adhoc Job to Tomorrow</h2>
+              <h2 className="font-bold text-base" style={{ fontFamily: 'var(--font-sora)', color: 'var(--text-primary)' }}>Schedule Adhoc Job</h2>
               <button onClick={() => setShowAdhoc(false)} className="w-8 h-8 flex items-center justify-center rounded-lg" style={{ background: 'var(--surface-subtle)', color: 'var(--text-secondary)' }}>
                 <X className="w-4 h-4" />
               </button>
@@ -239,6 +246,10 @@ export default function TomorrowDispatch({ drivers, onFlash }: TomorrowDispatchP
                     <option value="">Select driver…</option>
                     {drivers.filter(d => d.isActive).map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
                   </select>
+                </div>
+                <div className="col-span-2">
+                  <label className="label">Scheduled Date *</label>
+                  <input className={inp} type="date" value={adhoc.scheduledDate} onChange={e => setAdhoc(f => ({ ...f, scheduledDate: e.target.value }))} />
                 </div>
                 <div className="col-span-2">
                   <label className="label">Customer *</label>
@@ -278,7 +289,7 @@ export default function TomorrowDispatch({ drivers, onFlash }: TomorrowDispatchP
                 style={{ background: 'var(--amber)', color: '#000', fontFamily: 'var(--font-dm-sans)' }}
               >
                 {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                Add to Tomorrow&apos;s Run
+                Schedule Job
               </button>
             </div>
           </div>
