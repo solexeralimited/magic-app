@@ -6,15 +6,17 @@ export async function GET() {
   const session = await requireAuth('admin');
   if (!session) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   try {
-    const [sheetId, tabName] = await Promise.all([
+    const [sheetId, tabName, driverTabs] = await Promise.all([
       getSetting(SETTING_KEYS.sheetId),
       getSetting(SETTING_KEYS.sheetTab),
+      getSetting(SETTING_KEYS.driverTabs),
     ]);
     return NextResponse.json({
       success: true,
       data: {
         sheetId: sheetId ?? '',
         tabName: tabName ?? '',
+        driverTabs: driverTabs === '1',
         envSheetId: Boolean(process.env.GOOGLE_SHEET_ID),
         serviceAccountConfigured: Boolean(process.env.GOOGLE_SERVICE_ACCOUNT_KEY),
       },
@@ -34,6 +36,9 @@ export async function PUT(req: NextRequest) {
     }
     if (body.tabName !== undefined) {
       await setSetting(SETTING_KEYS.sheetTab, String(body.tabName).trim());
+    }
+    if (body.driverTabs !== undefined) {
+      await setSetting(SETTING_KEYS.driverTabs, body.driverTabs ? '1' : '');
     }
     return NextResponse.json({ success: true });
   } catch (err) {

@@ -6,6 +6,8 @@ import { prisma } from './prisma';
 export const SETTING_KEYS = {
   sheetId: 'sheets.spreadsheetId',
   sheetTab: 'sheets.tabName',
+  driverTabs: 'sheets.driverTabs',
+  defaultDriver: 'sheets.defaultDriver',
 } as const;
 
 export async function getSetting(key: string): Promise<string | null> {

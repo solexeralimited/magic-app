@@ -367,7 +367,7 @@ export default function AdminPage() {
   const [resetConfirm, setResetConfirm]     = useState('');
   const [resetting, setResetting]           = useState(false);
   // Sheets settings (Import & API tab)
-  const [sheetsForm, setSheetsForm]         = useState<{ sheetUrl: string; tabName: string } | null>(null);
+  const [sheetsForm, setSheetsForm]         = useState<{ sheetUrl: string; tabName: string; driverTabs: boolean } | null>(null);
   const [sheetsSaving, setSheetsSaving]     = useState(false);
   const [dryRunning, setDryRunning]         = useState(false);
   const [dryRunResult, setDryRunResult]     = useState<{ wouldImport: number; wouldRemove?: number; newIds: number; tab: string; errors: { row: number; error: string }[] } | null>(null);
@@ -439,7 +439,7 @@ export default function AdminPage() {
     fetcher, { refreshInterval: 15_000 }
   );
 
-  const { data: sheetsSettingsData, mutate: mutateSheetsSettings } = useSWR<ApiResponse<{ sheetId: string; tabName: string; envSheetId: boolean; serviceAccountConfigured: boolean }>>(
+  const { data: sheetsSettingsData, mutate: mutateSheetsSettings } = useSWR<ApiResponse<{ sheetId: string; tabName: string; driverTabs: boolean; envSheetId: boolean; serviceAccountConfigured: boolean }>>(
     isAdmin && tab === 'import' ? '/api/settings/sheets' : null, fetcher
   );
 
@@ -763,7 +763,7 @@ export default function AdminPage() {
   ];
 
   const sheetsSettings = sheetsSettingsData?.data;
-  const sheetsFormValue = sheetsForm ?? { sheetUrl: sheetsSettings?.sheetId ?? '', tabName: sheetsSettings?.tabName ?? '' };
+  const sheetsFormValue = sheetsForm ?? { sheetUrl: sheetsSettings?.sheetId ?? '', tabName: sheetsSettings?.tabName ?? '', driverTabs: sheetsSettings?.driverTabs ?? false };
 
   // When in all-drivers mode, show alerts across the whole fleet
   const alertSource = selectedDriver === '' ? allDailyJobs : dailyJobs;
@@ -1791,7 +1791,29 @@ export default function AdminPage() {
                 placeholder="e.g. Schedule"
                 value={sheetsFormValue.tabName}
                 onChange={e => setSheetsForm({ ...sheetsFormValue, tabName: e.target.value })}
+                disabled={sheetsFormValue.driverTabs}
               />
+              {sheetsFormValue.driverTabs && (
+                <p className="text-xs mt-2" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                  (Driver-tab mode enabled — reading from tabs matching driver names)
+                </p>
+              )}
+            </div>
+
+            <div className="flex items-center gap-3 p-3 rounded-lg" style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)' }}>
+              <input
+                type="checkbox"
+                id="driverTabs"
+                checked={sheetsFormValue.driverTabs}
+                onChange={e => setSheetsForm({ ...sheetsFormValue, driverTabs: e.target.checked, tabName: e.target.checked ? '' : sheetsFormValue.tabName })}
+                className="w-4 h-4 rounded accent-amber-500"
+              />
+              <label htmlFor="driverTabs" className="text-sm font-medium flex-1" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-dm-sans)', cursor: 'pointer' }}>
+                <span style={{ color: 'var(--amber)', fontWeight: 600 }}>Use driver-tab mode</span>
+                <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>
+                  Import from all tabs matching your active driver names (TK, PJ, George, Karl, Dom, Tom)
+                </p>
+              </label>
             </div>
             <div className="flex gap-2">
               <button
