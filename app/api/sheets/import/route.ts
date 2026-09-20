@@ -29,10 +29,10 @@ export async function POST(req: NextRequest) {
   const dryRun: boolean = body.dryRun === true;
 
   try {
-    const driverNames = new Set(
-      (await prisma.driver.findMany({ select: { name: true }, where: { isActive: true } })).map(d => d.name)
-    );
-    const driverTabs = (await getSetting(SETTING_KEYS.driverTabs)) === '1';
+    const drivers = await prisma.driver.findMany({ select: { name: true }, where: { isActive: true } });
+    const driverNames = new Set(drivers.map(d => d.name));
+    const driverTabsSetting = await getSetting(SETTING_KEYS.driverTabs);
+    const driverTabs = driverTabsSetting === '1';
 
     // Decide which tabs to read
     let tabs: string[] = [];
@@ -42,11 +42,12 @@ export async function POST(req: NextRequest) {
       if (tabs.length === 0) {
         return NextResponse.json({
           success: false,
-          error: `No tabs match active drivers. Available tabs: ${allTabs.map(t => `"${t}"`).join(', ')}. Active drivers: ${[...driverNames].map(d => `"${d}"`).join(', ')}`,
+          error: `No tabs match active drivers. Driver-tab mode is ON. Available tabs: ${allTabs.map(t => `"${t}"`).join(', ')}. Active drivers: ${[...driverNames].map(d => `"${d}"`).join(', ')}. Make sure driver names match tab names exactly.`,
         }, { status: 400 });
       }
     } else {
-      tabs = [await getTabName()];
+      const tabName = await getTabName();
+      tabs = [tabName];
     }
 
     // Process all tabs
