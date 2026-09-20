@@ -104,6 +104,12 @@ export async function getTabName(): Promise<string> {
   return title;
 }
 
+export async function listTabNames(): Promise<string[]> {
+  const meta = await sheetsFetch('?fields=sheets.properties.title');
+  const sheets = meta.sheets as { properties: { title: string } }[] | undefined;
+  return sheets?.map(s => s.properties.title) ?? [];
+}
+
 /** Read the whole tab. Returns rows of cell strings; row 0 is the header row. */
 export async function readRows(tab: string): Promise<string[][]> {
   const data = await sheetsFetch(`/values/${encodeURIComponent(tab)}`);
