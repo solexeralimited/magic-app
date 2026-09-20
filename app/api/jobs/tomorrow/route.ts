@@ -63,6 +63,7 @@ export async function POST(req: NextRequest) {
             status: 'Pending',
             runType: 'Tomorrow',
             sheetRowId: m.sheetRowId,
+            scheduledDate: getDefaultDate(),
           })),
         });
       }
