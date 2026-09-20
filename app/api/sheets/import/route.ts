@@ -70,6 +70,13 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
+      // Debug logging
+      console.log(`[Sheets Import] Tab: ${tab}, Total rows: ${rows.length}`);
+      for (let debug = 0; debug < Math.min(3, rows.length); debug++) {
+        const nonEmpty = rows[debug].filter(c => c.trim()).length;
+        console.log(`[Sheets Import] Row ${debug}: ${nonEmpty} non-empty cells, first 3: [${rows[debug].slice(0, 3).join(' | ')}]`);
+      }
+
       // Find the header row by looking for rows with actual column headers
       // Skip rows that look like titles (single text spanning entire row)
       let headerRowIdx = -1;
@@ -83,14 +90,17 @@ export async function POST(req: NextRequest) {
         const cols = mapHeaders(row);
         // Header row must have at least 2 expected columns
         const matchingCols = Object.values(cols).length;
+        console.log(`[Sheets Import] Row ${i} has ${matchingCols} recognized columns: ${Object.keys(cols).join(', ')}`);
         if (matchingCols >= 2) {
           headerRowIdx = i;
+          console.log(`[Sheets Import] Selected row ${i} as header`);
           break;
         }
       }
 
       if (headerRowIdx === -1) {
         allErrors.push({ tab, row: 1, error: `Could not find header row. Searched ${Math.min(10, rows.length)} rows. Ensure sheet has proper column headers (Customer Name, Day, etc.)` });
+        console.log(`[Sheets Import] ERROR: No header row found for tab ${tab}`);
         continue;
       }
 
