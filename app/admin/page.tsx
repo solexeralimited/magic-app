@@ -352,6 +352,7 @@ export default function AdminPage() {
     if (tab === 'dashboard') {
       setDailyMapLinkSearch('');
       setDailyCallAheadFilter('all');
+      setSelectedDriver('');
     }
   }, [tab]);
   // History filters
