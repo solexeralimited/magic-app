@@ -20,6 +20,7 @@ import {
 import Header from '@/components/Header';
 import StatsCard from '@/components/StatsCard';
 import TomorrowDispatch from '@/components/TomorrowDispatch';
+import Footer from '@/components/Footer';
 import { qtyLabel } from '@/components/JobCard';
 import { Job, RunLogEntry, NotificationLog, AdminMessage, ApiResponse } from '@/types';
 import { computeStats, statusColor, statusLabel, formatTime, formatDate } from '@/lib/utils';
@@ -2031,6 +2032,7 @@ export default function AdminPage() {
           </div>
         </>)}
 
+        <Footer />
       </main>
 
       {/* Sticky reallocation bar */}
