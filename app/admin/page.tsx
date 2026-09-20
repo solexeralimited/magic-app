@@ -1,5 +1,5 @@
 'use client';
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
@@ -344,6 +344,14 @@ export default function AdminPage() {
   const [dailySearch, setDailySearch] = useState('');
   const [dailyMapLinkSearch, setDailyMapLinkSearch] = useState('');
   const [dailyCallAheadFilter, setDailyCallAheadFilter] = useState<'all' | 'yes' | 'no'>('all');
+
+  // Clear search boxes when opening Dashboard tab
+  useEffect(() => {
+    if (tab === 'dashboard') {
+      setDailyMapLinkSearch('');
+      setDailyCallAheadFilter('all');
+    }
+  }, [tab]);
   // History filters
   const [histSearch, setHistSearch]       = useState('');
   const [histDriver, setHistDriver]       = useState('');
