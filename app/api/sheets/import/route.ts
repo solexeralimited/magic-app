@@ -70,16 +70,23 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
-      const header = rows[0];
-      const cols = mapHeaders(header);
-
-      // Check required columns
-      for (const required of ['customerName', 'day'] as const) {
-        if (cols[required] === undefined) {
-          allErrors.push({ tab, row: 1, error: `Missing required column: ${required}` });
-          continue;
+      // Find the header row by looking for required columns
+      let headerRowIdx = -1;
+      for (let i = 0; i < Math.min(5, rows.length); i++) {
+        const cols = mapHeaders(rows[i]);
+        if (cols.customerName !== undefined && cols.day !== undefined) {
+          headerRowIdx = i;
+          break;
         }
       }
+
+      if (headerRowIdx === -1) {
+        allErrors.push({ tab, row: 1, error: 'Could not find header row with required columns (customerName, day)' });
+        continue;
+      }
+
+      const header = rows[headerRowIdx];
+      const cols = mapHeaders(header);
 
       // Ensure ID column exists
       let idCol = cols.id;
@@ -94,7 +101,7 @@ export async function POST(req: NextRequest) {
       // Get driver name for this tab (from tab name in driver-tab mode, or from column in single-tab mode)
       const tabDriverName = driverTabs ? tab.trim() : '';
 
-      for (let i = 1; i < rows.length; i++) {
+      for (let i = headerRowIdx + 1; i < rows.length; i++) {
         const row = rows[i];
         const sheetRowNum = i + 1;
 
