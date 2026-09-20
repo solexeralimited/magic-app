@@ -494,16 +494,10 @@ export default function AdminPage() {
 
   // Per-driver summary for "All Drivers" view
   const allDailyJobs = allDailyData?.data ?? [];
-  const filteredAllDailyJobs = allDailyJobs.filter(j => {
-    if (dailyMapLinkSearch && !j.mapLink?.toLowerCase().includes(dailyMapLinkSearch.toLowerCase())) return false;
-    if (dailyCallAheadFilter === 'yes' && !j.callAhead) return false;
-    if (dailyCallAheadFilter === 'no' && j.callAhead) return false;
-    return true;
-  });
 
   const driverSummaries = (() => {
     const map = new Map<string, { total: number; done: number; issues: number; cantAccess: number }>();
-    for (const j of filteredAllDailyJobs) {
+    for (const j of allDailyJobs) {
       const prev = map.get(j.driverName) ?? { total: 0, done: 0, issues: 0, cantAccess: 0 };
       prev.total += 1;
       if (j.status === 'Done') prev.done += 1;
@@ -994,10 +988,6 @@ export default function AdminPage() {
               {allDailyJobs.length === 0 ? (
                 <p className="text-xs text-center py-4" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
                   No daily run active — generate and promote a run first
-                </p>
-              ) : filteredAllDailyJobs.length === 0 ? (
-                <p className="text-xs text-center py-4" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
-                  No jobs match filter
                 </p>
               ) : driverSummaries.map(d => {
                 const pct = d.total > 0 ? Math.round((d.done / d.total) * 100) : 0;
