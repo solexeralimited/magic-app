@@ -31,6 +31,7 @@ export interface Job {
   completionTime?: string;
   issueNotes?: string;
   sheetRowId?: string;
+  scheduledDate?: string; // ISO date string for scheduled adhoc jobs
   notificationSentFlags: NotificationSentFlags;
   createdAt: string;
   updatedAt: string;
