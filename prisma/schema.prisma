@@ -25,7 +25,6 @@ model Driver {
   createdAt        DateTime           @default(now())
   jobs             Job[]
   pushSubscription PushSubscription?
-  messagesReceived AdminMessage[]
 }
 
 model Job {
@@ -86,10 +85,11 @@ model PushSubscription {
   updatedAt  DateTime @updatedAt
 }
 
+// Deliberately no FK to Driver: `to` also carries the broadcast sentinel
+// 'all', which is not a real driver row (see /api/notifications/send).
 model AdminMessage {
   id     String    @id @default(cuid())
   to     String
-  driver Driver?   @relation(fields: [to], references: [name])
   message String
   sentAt  DateTime  @default(now())
   readAt  DateTime?

@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { promoteToDailyRuns, getAllPushSubscriptions } from '@/lib/db';
 import { sendPushNotification } from '@/lib/notifications';
+import { requireAuth } from '@/lib/auth';
 
 export async function POST(req: NextRequest) {
   const auth = req.headers.get('x-cron-secret');
-  if (process.env.CRON_SECRET && auth !== process.env.CRON_SECRET) {
-    const body = await req.json().catch(() => ({}));
-    if (body.adminOverride !== true) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
+  const isCron = Boolean(process.env.CRON_SECRET && auth === process.env.CRON_SECRET);
+  if (!isCron) {
+    const session = await requireAuth('admin');
+    if (!session) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
   try {
     const jobs = await promoteToDailyRuns();

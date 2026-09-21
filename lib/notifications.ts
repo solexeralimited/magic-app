@@ -63,6 +63,17 @@ export async function sendPushNotification(
 
 // ─── Email Templates ─────────────────────────────────────────────────────────
 
+// Job fields (customer name, notes, address, ...) ultimately come from a
+// Google Sheet or the bulk-import API — never trust them as safe HTML.
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function baseEmailTemplate(content: string): string {
   return `<!DOCTYPE html>
 <html>
@@ -102,13 +113,13 @@ export async function sendIssueAlertEmail(job: Job): Promise<void> {
   const html = baseEmailTemplate(`
     <h2 style="margin-top:0;color:#dc2626;">⚠️ Issue Reported</h2>
     <p>A driver has reported an issue on a job.</p>
-    <div class="detail-row"><span class="detail-label">Driver</span><span class="detail-value">${job.driverName}</span></div>
-    <div class="detail-row"><span class="detail-label">Customer</span><span class="detail-value">${job.customerName}</span></div>
-    <div class="detail-row"><span class="detail-label">Address</span><span class="detail-value">${job.address}</span></div>
-    <div class="detail-row"><span class="detail-label">Job Type</span><span class="detail-value">${job.jobType}</span></div>
-    <div class="detail-row"><span class="detail-label">Issue Notes</span><span class="detail-value">${job.issueNotes || 'No notes provided'}</span></div>
+    <div class="detail-row"><span class="detail-label">Driver</span><span class="detail-value">${escapeHtml(job.driverName)}</span></div>
+    <div class="detail-row"><span class="detail-label">Customer</span><span class="detail-value">${escapeHtml(job.customerName)}</span></div>
+    <div class="detail-row"><span class="detail-label">Address</span><span class="detail-value">${escapeHtml(job.address)}</span></div>
+    <div class="detail-row"><span class="detail-label">Job Type</span><span class="detail-value">${escapeHtml(job.jobType)}</span></div>
+    <div class="detail-row"><span class="detail-label">Issue Notes</span><span class="detail-value">${escapeHtml(job.issueNotes || 'No notes provided')}</span></div>
     <div class="detail-row"><span class="detail-label">Time</span><span class="detail-value">${new Date().toLocaleString('en-AU')}</span></div>
-    ${job.mapLink ? `<a href="${job.mapLink}" class="btn">View on Map</a>` : ''}
+    ${job.mapLink ? `<a href="${escapeHtml(job.mapLink)}" class="btn">View on Map</a>` : ''}
   `);
 
   await sendEmail(
@@ -122,12 +133,12 @@ export async function sendCantAccessEmail(job: Job): Promise<void> {
   const html = baseEmailTemplate(`
     <h2 style="margin-top:0;color:#ea580c;">🔒 Could Not Access</h2>
     <p>A driver could not access a property.</p>
-    <div class="detail-row"><span class="detail-label">Driver</span><span class="detail-value">${job.driverName}</span></div>
-    <div class="detail-row"><span class="detail-label">Customer</span><span class="detail-value">${job.customerName}</span></div>
-    <div class="detail-row"><span class="detail-label">Address</span><span class="detail-value">${job.address}</span></div>
-    <div class="detail-row"><span class="detail-label">Phone</span><span class="detail-value">${job.phone}</span></div>
+    <div class="detail-row"><span class="detail-label">Driver</span><span class="detail-value">${escapeHtml(job.driverName)}</span></div>
+    <div class="detail-row"><span class="detail-label">Customer</span><span class="detail-value">${escapeHtml(job.customerName)}</span></div>
+    <div class="detail-row"><span class="detail-label">Address</span><span class="detail-value">${escapeHtml(job.address)}</span></div>
+    <div class="detail-row"><span class="detail-label">Phone</span><span class="detail-value">${escapeHtml(job.phone)}</span></div>
     <div class="detail-row"><span class="detail-label">Time</span><span class="detail-value">${new Date().toLocaleString('en-AU')}</span></div>
-    ${job.mapLink ? `<a href="${job.mapLink}" class="btn">View on Map</a>` : ''}
+    ${job.mapLink ? `<a href="${escapeHtml(job.mapLink)}" class="btn">View on Map</a>` : ''}
   `);
 
   await sendEmail(
@@ -141,11 +152,11 @@ export async function sendCallAheadEmail(job: Job): Promise<void> {
   if (!job.phone) return;
   const html = baseEmailTemplate(`
     <h2 style="margin-top:0;color:#2563eb;">📞 Service Reminder</h2>
-    <p>Dear ${job.customerName},</p>
+    <p>Dear ${escapeHtml(job.customerName)},</p>
     <p>This is a friendly reminder that your service is scheduled for <strong>today</strong>.</p>
-    <div class="detail-row"><span class="detail-label">Service</span><span class="detail-value">${job.jobType}</span></div>
-    <div class="detail-row"><span class="detail-label">Items</span><span class="detail-value">${job.items}</span></div>
-    <div class="detail-row"><span class="detail-label">Notes</span><span class="detail-value">${job.notes || 'None'}</span></div>
+    <div class="detail-row"><span class="detail-label">Service</span><span class="detail-value">${escapeHtml(job.jobType)}</span></div>
+    <div class="detail-row"><span class="detail-label">Items</span><span class="detail-value">${escapeHtml(job.items)}</span></div>
+    <div class="detail-row"><span class="detail-label">Notes</span><span class="detail-value">${escapeHtml(job.notes || 'None')}</span></div>
     <p style="margin-top:16px;color:#64748b;font-size:14px;">If you have any questions, please contact our office.</p>
   `);
 

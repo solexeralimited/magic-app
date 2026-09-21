@@ -542,10 +542,10 @@ export default function AdminPage() {
 
   const handleGenerate = async () => {
     setGenerating(true);
-    let j = await call('POST', '/api/runs/generate', { adminOverride: true });
+    let j = await call('POST', '/api/runs/generate', {});
     if (!j.success && j.requiresConfirm) {
       if (confirm(`${j.error}\n\nRegenerate anyway?`)) {
-        j = await call('POST', '/api/runs/generate', { adminOverride: true, force: true });
+        j = await call('POST', '/api/runs/generate', { force: true });
       } else {
         setGenerating(false);
         return;
@@ -557,7 +557,7 @@ export default function AdminPage() {
     }
     setGenerating(false);
   };
-  const handlePromote  = async () => { setPromoting(true);  const j = await call('POST', '/api/runs/promote',  { adminOverride: true }); flash(j.success ? `✓ Promoted ${j.data.count} jobs` : `✗ ${j.error}`, j.success); if (j.success) { mutateDaily(); mutateAllDaily(); } setPromoting(false); };
+  const handlePromote  = async () => { setPromoting(true);  const j = await call('POST', '/api/runs/promote',  {}); flash(j.success ? `✓ Promoted ${j.data.count} jobs` : `✗ ${j.error}`, j.success); if (j.success) { mutateDaily(); mutateAllDaily(); mutateTomorrow(); } setPromoting(false); };
   const handleDailySummary = async () => { const j = await call('POST', '/api/cron/daily-summary', {}); flash(j.success ? '✓ Daily summary sent to admin email' : `✗ ${j.error}`, j.success); };
 
   const handleSheetsImport = async () => {
