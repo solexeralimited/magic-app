@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateTomorrowRuns, tomorrowRunExists } from '@/lib/db';
+import { requireAuth } from '@/lib/auth';
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const auth = req.headers.get('x-cron-secret');
   const isCron = Boolean(process.env.CRON_SECRET && auth === process.env.CRON_SECRET);
-  if (process.env.CRON_SECRET && !isCron && body.adminOverride !== true) {
-    return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+  if (!isCron) {
+    const session = await requireAuth('admin');
+    if (!session) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
   try {
     // A prepared Tomorrow run may hold dispatch changes (reassignments, adhoc

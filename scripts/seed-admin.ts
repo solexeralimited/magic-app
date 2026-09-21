@@ -9,7 +9,12 @@ async function main() {
 
   const email = (process.env.ADMIN_EMAIL ?? 'admin@thunderbox.co.nz').toLowerCase();
   const name = 'Admin';
-  const password = process.argv[2] ?? 'Thunderbox2024!';
+  const password = process.argv[2];
+  if (!password) {
+    console.error('Usage: tsx scripts/seed-admin.ts <password>');
+    console.error('A password must be given explicitly — there is no default.');
+    process.exit(1);
+  }
 
   const { rows } = await pool.query('SELECT id FROM "AdminUser" WHERE email = $1', [email]);
   if (rows.length > 0) {

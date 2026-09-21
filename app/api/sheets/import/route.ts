@@ -76,13 +76,22 @@ export async function POST(req: NextRequest) {
     const tabWrites: { tab: string; updates: { row: number; col: number; value: string }[] }[] = [];
     const allSeenIds = new Set<string>();
 
+    // Fetch every tab before touching the database. If the Sheets API fails
+    // partway through (rate limit, network blip, bad tab name), we bail out
+    // here — before 'replace' mode deletes anything — instead of leaving the
+    // master schedule wiped with only a partial re-import in its place.
+    const tabRows = new Map<string, string[][]>();
+    for (const tab of tabs) {
+      tabRows.set(tab, await readRows(tab));
+    }
+
     if (mode === 'replace') {
       const { count } = await prisma.job.deleteMany({ where: { runType: 'Master' } });
       totalRemoved = count;
     }
 
     for (const tab of tabs) {
-      const rows = await readRows(tab);
+      const rows = tabRows.get(tab)!;
       if (rows.length < 2) {
         allErrors.push({ tab, row: 0, error: 'Tab has no data rows below the header' });
         continue;

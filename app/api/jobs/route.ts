@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDailyRunJobs, getTomorrowRunJobs } from '@/lib/db';
 import { prisma } from '@/lib/prisma';
+import { requireAuth } from '@/lib/auth';
 
 export async function GET(req: NextRequest) {
   const driver = req.nextUrl.searchParams.get('driver');
@@ -19,6 +20,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const session = await requireAuth('admin');
+  if (!session) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+
   try {
     const { jobIds, driverName } = await req.json();
     if (!Array.isArray(jobIds) || jobIds.length === 0 || !driverName) {

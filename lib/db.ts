@@ -136,8 +136,20 @@ export async function updateJobStatus(
 
 // ─── Run generation ───────────────────────────────────────────────────────────
 
+function tomorrowDateString(): string {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  return tomorrow.toISOString().split('T')[0];
+}
+
+// Jobs from before `scheduledDate` existed have it empty — treat that as
+// "belongs to the one active generated run" so old rows keep working.
+function forRunDate(scheduledDate: string) {
+  return { OR: [{ scheduledDate }, { scheduledDate: '' }] };
+}
+
 export async function tomorrowRunExists(): Promise<number> {
-  return prisma.job.count({ where: { runType: 'Tomorrow' } });
+  return prisma.job.count({ where: { runType: 'Tomorrow', ...forRunDate(tomorrowDateString()) } });
 }
 
 export async function generateTomorrowRuns(): Promise<Job[]> {
@@ -148,12 +160,14 @@ export async function generateTomorrowRuns(): Promise<Job[]> {
     throw new Error('Tomorrow is a weekend — no runs generated.');
   }
 
+  const scheduledDate = tomorrow.toISOString().split('T')[0];
   const dayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][dayOfWeek];
   const all = await getAllJobs();
   const due = all.filter(j => j.day === dayName && isJobDueForDate(j, tomorrow));
 
-  // Clear previous tomorrow runs, then insert new ones
-  await prisma.job.deleteMany({ where: { runType: 'Tomorrow' } });
+  // Clear only tomorrow's previously generated run — adhoc jobs dispatched to
+  // a different future date are left alone so regenerating doesn't wipe them.
+  await prisma.job.deleteMany({ where: { runType: 'Tomorrow', ...forRunDate(scheduledDate) } });
   if (due.length > 0) {
     await prisma.job.createMany({
       data: due.map(j => ({
@@ -174,6 +188,7 @@ export async function generateTomorrowRuns(): Promise<Job[]> {
         callAhead: j.callAhead,
         status: 'Pending',
         runType: 'Tomorrow',
+        scheduledDate,
         sheetRowId: j.sheetRowId ?? '',
       })),
     });
@@ -183,12 +198,16 @@ export async function generateTomorrowRuns(): Promise<Job[]> {
 }
 
 export async function promoteToDailyRuns(): Promise<Job[]> {
+  const today = new Date().toISOString().split('T')[0];
+
   // Archive any remaining daily runs that weren't completed
   await prisma.job.deleteMany({ where: { runType: 'Daily' } });
 
-  // Promote tomorrow → daily
-  const updated = await prisma.job.updateMany({
-    where: { runType: 'Tomorrow' },
+  // Promote tomorrow → daily, but only the run scheduled for today — jobs
+  // dispatched further ahead (e.g. an adhoc job booked for next week) stay
+  // in 'Tomorrow' until their own date comes around.
+  await prisma.job.updateMany({
+    where: { runType: 'Tomorrow', ...forRunDate(today) },
     data: { runType: 'Daily' },
   });
 
