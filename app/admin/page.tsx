@@ -1014,9 +1014,6 @@ export default function AdminPage() {
             )}
           </div>
 
-          {/* Tomorrow's run — dispatch working copy, editable until promoted */}
-          <TomorrowDispatch drivers={drivers} onFlash={flash} />
-
           {/* Driver picker */}
           <div className="card-shell p-4">
             <label className={lbl} style={{ color: 'var(--text-tertiary)' }}>View driver</label>
@@ -1052,6 +1049,9 @@ export default function AdminPage() {
               </select>
             </div>
           </div>
+
+          {/* Tomorrow's run — dispatch working copy, editable until promoted */}
+          <TomorrowDispatch drivers={drivers} onFlash={flash} />
 
           {/* All-drivers progress grid */}
           {selectedDriver === '' && (
