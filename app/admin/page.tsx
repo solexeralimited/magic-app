@@ -902,7 +902,7 @@ export default function AdminPage() {
                   onClick={handleGenerate}
                   disabled={generating}
                   className="w-full flex items-center justify-center gap-2 p-4 rounded-2xl font-semibold text-sm transition-all active:scale-95 disabled:opacity-50"
-                  style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)', color: 'var(--amber)', fontFamily: 'var(--font-dm-sans)' }}
+                  style={{ background: 'rgba(34,211,238,0.12)', border: '1px solid rgba(34,211,238,0.2)', color: '#06B6D4', fontFamily: 'var(--font-dm-sans)' }}
                 >
                   {generating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5" />}
                   Generate Tomorrow's Run
@@ -925,7 +925,7 @@ export default function AdminPage() {
                     </p>
                     <div className="space-y-2 max-h-96 overflow-y-auto">
                       {tomorrowJobs.map(job => (
-                        <div key={job.id} className="card-shell p-3" style={{ background: 'rgba(245,158,11,0.08)', borderLeft: '3px solid rgba(245,158,11,0.5)' }}>
+                        <div key={job.id} className="card-shell p-3" style={{ background: 'rgba(34,211,238,0.12)', borderLeft: '3px solid rgba(34,211,238,0.5)' }}>
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-dm-sans)' }}>
@@ -938,7 +938,7 @@ export default function AdminPage() {
                                 <strong>{job.driverName}</strong> · {job.jobType}
                               </p>
                             </div>
-                            <span className="badge" style={{ background: 'rgba(245,158,11,0.2)', color: 'var(--amber)', fontSize: '11px', flexShrink: 0 }}>
+                            <span className="badge" style={{ background: 'rgba(34,211,238,0.15)', color: '#06B6D4', fontSize: '11px', flexShrink: 0 }}>
                               #{job.jobOrder}
                             </span>
                           </div>
