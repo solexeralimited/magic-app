@@ -952,7 +952,7 @@ export default function AdminPage() {
 
             {/* Promote subtab */}
             {dashboardSubTab === 'promote' && (
-              <div className="p-5 space-y-3">
+              <div className="p-5 space-y-4">
                 <button
                   onClick={handlePromote}
                   disabled={promoting}
@@ -979,6 +979,37 @@ export default function AdminPage() {
                   <BarChart3 className="w-4 h-4" />
                   Send Daily Summary Email
                 </button>
+
+                {/* Daily jobs preview */}
+                {allDailyJobs.length > 0 && (
+                  <div className="space-y-2 mt-4 pt-4" style={{ borderTop: '1px solid var(--surface-border)' }}>
+                    <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                      Promoted Daily Jobs ({allDailyJobs.length})
+                    </p>
+                    <div className="space-y-2 max-h-96 overflow-y-auto">
+                      {allDailyJobs.map(job => (
+                        <div key={job.id} className="card-shell p-3" style={{ background: 'rgba(16,185,129,0.08)', borderLeft: '3px solid rgba(16,185,129,0.5)' }}>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-dm-sans)' }}>
+                                {job.address}
+                              </p>
+                              <p className="text-xs" style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-dm-sans)' }}>
+                                {job.customerName}
+                              </p>
+                              <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                                <strong>{job.driverName}</strong> · {job.jobType}
+                              </p>
+                            </div>
+                            <span className="badge" style={{ background: 'rgba(16,185,129,0.2)', color: '#34D399', fontSize: '11px', flexShrink: 0 }}>
+                              #{job.jobOrder}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
