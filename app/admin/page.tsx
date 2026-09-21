@@ -928,17 +928,17 @@ export default function AdminPage() {
                         <div key={job.id} className="card-shell p-3" style={{ background: 'rgba(34,211,238,0.12)', borderLeft: '3px solid rgba(34,211,238,0.5)' }}>
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-dm-sans)' }}>
+                              <p className="text-sm font-semibold" style={{ color: '#fff', fontFamily: 'var(--font-dm-sans)' }}>
                                 {job.address}
                               </p>
-                              <p className="text-xs" style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-dm-sans)' }}>
+                              <p className="text-xs" style={{ color: '#9CA3AF', fontFamily: 'var(--font-dm-sans)' }}>
                                 {job.customerName}
                               </p>
-                              <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                              <p className="text-xs mt-1" style={{ color: '#9CA3AF', fontFamily: 'var(--font-dm-sans)' }}>
                                 <strong>{job.driverName}</strong> · {job.jobType}
                               </p>
                             </div>
-                            <span className="badge" style={{ background: 'rgba(34,211,238,0.15)', color: '#06B6D4', fontSize: '11px', flexShrink: 0 }}>
+                            <span className="badge" style={{ background: 'rgba(34,211,238,0.15)', color: '#67E8F9', fontSize: '11px', flexShrink: 0 }}>
                               #{job.jobOrder}
                             </span>
                           </div>
@@ -991,13 +991,13 @@ export default function AdminPage() {
                         <div key={job.id} className="card-shell p-3" style={{ background: 'rgba(16,185,129,0.08)', borderLeft: '3px solid rgba(16,185,129,0.5)' }}>
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-dm-sans)' }}>
+                              <p className="text-sm font-semibold" style={{ color: '#fff', fontFamily: 'var(--font-dm-sans)' }}>
                                 {job.address}
                               </p>
-                              <p className="text-xs" style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-dm-sans)' }}>
+                              <p className="text-xs" style={{ color: '#9CA3AF', fontFamily: 'var(--font-dm-sans)' }}>
                                 {job.customerName}
                               </p>
-                              <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                              <p className="text-xs mt-1" style={{ color: '#9CA3AF', fontFamily: 'var(--font-dm-sans)' }}>
                                 <strong>{job.driverName}</strong> · {job.jobType}
                               </p>
                             </div>
