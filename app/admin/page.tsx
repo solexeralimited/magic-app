@@ -451,6 +451,11 @@ export default function AdminPage() {
     fetcher, { refreshInterval: 15_000 }
   );
 
+  const { data: tomorrowData, mutate: mutateTomorrow } = useSWR<ApiResponse<Job[]>>(
+    isAdmin && tab === 'dashboard' ? '/api/jobs/daily?runType=Tomorrow' : null,
+    fetcher, { refreshInterval: 15_000 }
+  );
+
   const { data: sheetsSettingsData, mutate: mutateSheetsSettings } = useSWR<ApiResponse<{ sheetId: string; tabName: string; driverTabs: boolean; envSheetId: boolean; serviceAccountConfigured: boolean }>>(
     isAdmin && tab === 'import' ? '/api/settings/sheets' : null, fetcher
   );
@@ -491,6 +496,7 @@ export default function AdminPage() {
 
   const dailyJobs = dailyData?.data ?? [];
   const unscheduledJobs = unscheduledData?.data ?? [];
+  const tomorrowJobs = tomorrowData?.data ?? [];
 
   // Per-driver summary for "All Drivers" view
   const allDailyJobs = allDailyData?.data ?? [];
@@ -546,6 +552,9 @@ export default function AdminPage() {
       }
     }
     flash(j.success ? `✓ Generated ${j.data.count} jobs for tomorrow` : `✗ ${j.error}`, j.success);
+    if (j.success) {
+      mutateTomorrow();
+    }
     setGenerating(false);
   };
   const handlePromote  = async () => { setPromoting(true);  const j = await call('POST', '/api/runs/promote',  { adminOverride: true }); flash(j.success ? `✓ Promoted ${j.data.count} jobs` : `✗ ${j.error}`, j.success); if (j.success) { mutateDaily(); mutateAllDaily(); } setPromoting(false); };
@@ -888,7 +897,7 @@ export default function AdminPage() {
 
             {/* Generate subtab */}
             {dashboardSubTab === 'generate' && (
-              <div className="p-5 space-y-3">
+              <div className="p-5 space-y-4">
                 <button
                   onClick={handleGenerate}
                   disabled={generating}
@@ -907,6 +916,37 @@ export default function AdminPage() {
                   {sheetsImporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}
                   Import from Sheets
                 </button>
+
+                {/* Tomorrow's jobs preview */}
+                {tomorrowJobs.length > 0 && (
+                  <div className="space-y-2 mt-4 pt-4" style={{ borderTop: '1px solid var(--surface-border)' }}>
+                    <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                      Tomorrow&apos;s Generated Jobs ({tomorrowJobs.length})
+                    </p>
+                    <div className="space-y-2 max-h-96 overflow-y-auto">
+                      {tomorrowJobs.map(job => (
+                        <div key={job.id} className="card-shell p-3" style={{ background: 'rgba(245,158,11,0.08)', borderLeft: '3px solid rgba(245,158,11,0.5)' }}>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-dm-sans)' }}>
+                                {job.address}
+                              </p>
+                              <p className="text-xs" style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-dm-sans)' }}>
+                                {job.customerName}
+                              </p>
+                              <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                                <strong>{job.driverName}</strong> · {job.jobType}
+                              </p>
+                            </div>
+                            <span className="badge" style={{ background: 'rgba(245,158,11,0.2)', color: 'var(--amber)', fontSize: '11px', flexShrink: 0 }}>
+                              #{job.jobOrder}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
