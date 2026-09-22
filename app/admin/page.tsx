@@ -858,7 +858,7 @@ export default function AdminPage() {
         </div>
       </div>
 
-      <main className="max-w-5xl mx-auto p-4 pb-20 space-y-4">
+      <main className="max-w-5xl mx-auto p-4 pb-24 space-y-4">
 
         {/* ── DASHBOARD ──────────────────────────────────────────── */}
         {tab === 'dashboard' && (<>
@@ -2246,9 +2246,17 @@ export default function AdminPage() {
             </div>
           </div>
         </>)}
-
-        <Footer showLink />
       </main>
+
+      {/* Persistent footer — stays visible at the bottom of the screen on every tab */}
+      <div
+        className="fixed bottom-0 left-0 right-0 z-20 px-4 py-2"
+        style={{ background: 'var(--shell-raised)', borderTop: '1px solid var(--shell-border)', backdropFilter: 'blur(8px)' }}
+      >
+        <div className="max-w-5xl mx-auto text-center">
+          <Footer compact showLink />
+        </div>
+      </div>
 
       {/* Sticky reallocation bar */}
       {selectMode && selectedJobIds.size > 0 && (
