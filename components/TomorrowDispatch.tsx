@@ -281,6 +281,10 @@ export default function TomorrowDispatch({ drivers, onFlash }: TomorrowDispatchP
                   <label className="label">Notes</label>
                   <textarea className={inp} rows={2} value={adhoc.notes} onChange={e => setAdhoc(f => ({ ...f, notes: e.target.value }))} />
                 </div>
+                <div className="col-span-2 flex items-center gap-3">
+                  <input type="checkbox" id="adhoc-ca" checked={adhoc.callAhead} onChange={e => setAdhoc(f => ({ ...f, callAhead: e.target.checked }))} className="w-4 h-4 rounded accent-amber-500" />
+                  <label htmlFor="adhoc-ca" className="text-sm font-medium" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-dm-sans)' }}>Call Ahead Required</label>
+                </div>
               </div>
               <button
                 onClick={handleAddAdhoc}
