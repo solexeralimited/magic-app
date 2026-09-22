@@ -111,6 +111,41 @@ describe.skipIf(!DB)('run lifecycle (integration)', async () => {
     expect(await prisma.job.count({ where: { runType: 'Master' } })).toBe(2); // masters untouched
   });
 
+  it('promote works when Generate and Promote happen the same day (regression)', async () => {
+    // generateTomorrowRuns() stamps scheduledDate as tomorrow's date at
+    // generate time. Promoting minutes later must not require that date to
+    // equal "today" — it used to, and reported 0 jobs promoted every time.
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowDate = tomorrow.toISOString().split('T')[0];
+
+    const master = await masterJob();
+    await copyOf(master, 'Tomorrow', { scheduledDate: tomorrowDate });
+
+    const promoted = await promoteToDailyRuns();
+    expect(promoted).toHaveLength(1);
+    expect(await prisma.job.count({ where: { runType: 'Daily' } })).toBe(1);
+  });
+
+  it('promote leaves a far-future adhoc job in Tomorrow untouched', async () => {
+    const nextWeek = new Date();
+    nextWeek.setDate(nextWeek.getDate() + 7);
+    const nextWeekDate = nextWeek.toISOString().split('T')[0];
+
+    const dueMaster = await masterJob();
+    const dueCopy = await copyOf(dueMaster, 'Tomorrow', { scheduledDate: new Date(Date.now() + 86400000).toISOString().split('T')[0] });
+    const futureMaster = await masterJob({ customerName: 'Next Week Adhoc', address: '9 Later St' });
+    const futureCopy = await copyOf(futureMaster, 'Tomorrow', { scheduledDate: nextWeekDate });
+
+    const promoted = await promoteToDailyRuns();
+    expect(promoted).toHaveLength(1);
+    expect(promoted[0].id).toBe(dueCopy.id);
+    expect(await prisma.job.count({ where: { runType: 'Daily' } })).toBe(1);
+
+    const stillTomorrow = await prisma.job.findUnique({ where: { id: futureCopy.id } });
+    expect(stillTomorrow?.runType).toBe('Tomorrow');
+  });
+
   it('tomorrowRunExists powers the generate guard', async () => {
     expect(await tomorrowRunExists()).toBe(0);
     const master = await masterJob();
