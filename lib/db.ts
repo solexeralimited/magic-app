@@ -198,16 +198,23 @@ export async function generateTomorrowRuns(): Promise<Job[]> {
 }
 
 export async function promoteToDailyRuns(): Promise<Job[]> {
-  const today = new Date().toISOString().split('T')[0];
-
   // Archive any remaining daily runs that weren't completed
   await prisma.job.deleteMany({ where: { runType: 'Daily' } });
 
-  // Promote tomorrow → daily, but only the run scheduled for today — jobs
-  // dispatched further ahead (e.g. an adhoc job booked for next week) stay
-  // in 'Tomorrow' until their own date comes around.
+  // Promote only the nearest scheduled run. "Nearest" is whatever's actually
+  // in Tomorrow right now, not the literal wall-clock date — Generate and
+  // Promote don't have to be clicked on different days for this to work.
+  // Jobs dispatched further ahead (e.g. an adhoc job booked for next week)
+  // stay in 'Tomorrow' until their own date becomes the nearest one.
+  const dates = (await prisma.job.findMany({
+    where: { runType: 'Tomorrow' },
+    select: { scheduledDate: true },
+    distinct: ['scheduledDate'],
+  })).map(j => j.scheduledDate).filter(d => d !== '').sort();
+  const nearestDate = dates[0];
+
   await prisma.job.updateMany({
-    where: { runType: 'Tomorrow', ...forRunDate(today) },
+    where: { runType: 'Tomorrow', ...(nearestDate !== undefined ? forRunDate(nearestDate) : {}) },
     data: { runType: 'Daily' },
   });
 
