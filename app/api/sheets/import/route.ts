@@ -8,12 +8,17 @@ const VALID_DAYS  = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 const VALID_TYPES = ['Service', 'Delivery', 'Pickup', 'Adhoc'];
 const VALID_FREQS = ['', 'Weekly', 'Fortnightly', '3 Weekly', '4 Weekly'];
 
-// Map abbreviated days to full names
+// Map abbreviated days to full names — includes the longer variants
+// ("Tues", "Thur", "Thurs") seen in real run sheets alongside the 3-letter ones.
 const DAY_ABBREV_MAP: Record<string, string> = {
   'mon': 'Monday',
   'tue': 'Tuesday',
+  'tues': 'Tuesday',
   'wed': 'Wednesday',
+  'weds': 'Wednesday',
   'thu': 'Thursday',
+  'thur': 'Thursday',
+  'thurs': 'Thursday',
   'fri': 'Friday',
 };
 
@@ -163,6 +168,10 @@ export async function POST(req: NextRequest) {
       // Get driver name for this tab (from tab name in driver-tab mode, or from column in single-tab mode)
       const tabDriverName = driverTabs ? tab.trim() : '';
 
+      // Fallback run order when the sheet has no recognized order column —
+      // counts only rows that actually get imported, so it comes out 1, 2, 3...
+      let autoOrder = 0;
+
       for (let i = headerRowIdx + 1; i < rows.length; i++) {
         const row = rows[i];
         const sheetRowNum = i + 1;
@@ -171,8 +180,11 @@ export async function POST(req: NextRequest) {
         const customerName = cell(row, cols.customerName);
         let day = normalizeDay(cell(row, cols.day));
 
-        // Skip empty rows
-        if (!driverName && !customerName && !day) continue;
+        // Skip empty rows. In driver-tab mode `driverName` is always the tab's
+        // own name — never blank — so it can't be used to detect an empty row;
+        // key off actual content instead. Single-tab mode is unchanged.
+        const hasContent = driverTabs ? Boolean(customerName || day) : Boolean(driverName || customerName || day);
+        if (!hasContent) continue;
 
         // Validate driver
         if (!driverName || !driverNames.has(driverName)) {
@@ -205,13 +217,14 @@ export async function POST(req: NextRequest) {
 
         const callAheadRaw = cell(row, cols.callAhead).toLowerCase();
         const existingId = cell(row, idCol);
+        autoOrder++;
 
         const data = {
           driverName,
           customerName,
           day,
           jobType,
-          jobOrder: Math.max(1, parseInt(cell(row, cols.jobOrder)) || 1),
+          jobOrder: cols.jobOrder !== undefined ? Math.max(1, parseInt(cell(row, cols.jobOrder)) || 1) : autoOrder,
           address: cell(row, cols.address),
           phone: cell(row, cols.phone),
           items: cell(row, cols.items),

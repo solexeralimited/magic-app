@@ -382,7 +382,7 @@ export default function AdminPage() {
   const [sheetsForm, setSheetsForm]         = useState<{ sheetUrl: string; tabName: string; driverTabs: boolean } | null>(null);
   const [sheetsSaving, setSheetsSaving]     = useState(false);
   const [dryRunning, setDryRunning]         = useState(false);
-  const [dryRunResult, setDryRunResult]     = useState<{ wouldImport: number; wouldRemove?: number; newIds: number; tab: string; errors: { row: number; error: string }[] } | null>(null);
+  const [dryRunResult, setDryRunResult]     = useState<{ wouldImport: number; wouldRemove?: number; newIds: number; tabs: string; errors: { row: number; error: string }[] } | null>(null);
   const [generating, setGenerating] = useState(false);
   const [promoting, setPromoting]   = useState(false);
   const [sheetsImporting, setSheetsImporting] = useState(false);
@@ -1994,7 +1994,7 @@ export default function AdminPage() {
             {dryRunResult && (
               <div className="rounded-xl p-4 space-y-2" style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)' }}>
                 <p className="text-sm font-semibold" style={{ color: '#34D399', fontFamily: 'var(--font-dm-sans)' }}>
-                  Reading tab &quot;{dryRunResult.tab}&quot; — nothing was changed
+                  Reading tab &quot;{dryRunResult.tabs}&quot; — nothing was changed
                 </p>
                 <p className="text-xs" style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-dm-sans)' }}>
                   Import would load <strong style={{ color: '#fff' }}>{dryRunResult.wouldImport}</strong> jobs
