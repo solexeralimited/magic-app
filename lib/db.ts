@@ -152,6 +152,16 @@ export async function tomorrowRunExists(): Promise<number> {
   return prisma.job.count({ where: { runType: 'Tomorrow', ...forRunDate(tomorrowDateString()) } });
 }
 
+// Undoes a Generate click: clears only tomorrow's own generated batch (and
+// any dispatch edits made to it since), leaving adhoc jobs booked further
+// out — still runType 'Tomorrow' but a later scheduledDate — untouched.
+export async function resetTomorrowRun(): Promise<number> {
+  const { count } = await prisma.job.deleteMany({
+    where: { runType: 'Tomorrow', ...forRunDate(tomorrowDateString()) },
+  });
+  return count;
+}
+
 // Distinguishes "nothing to do, this batch is already live" from a genuine
 // failure — callers use this to show a warning instead of an error.
 export class AlreadyPromotedError extends Error {}

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateTomorrowRuns, tomorrowRunExists, AlreadyPromotedError } from '@/lib/db';
+import { generateTomorrowRuns, tomorrowRunExists, resetTomorrowRun, AlreadyPromotedError } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
 
 export async function POST(req: NextRequest) {
@@ -39,6 +39,19 @@ export async function POST(req: NextRequest) {
       }
       return NextResponse.json({ success: false, warning: true, error: err.message }, { status: 409 });
     }
+    return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
+  }
+}
+
+// Undo a Generate click — wipes tomorrow's run back to empty. Manual-only;
+// there's no cron use case for discarding a prepared run.
+export async function DELETE() {
+  const session = await requireAuth('admin');
+  if (!session) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+  try {
+    const count = await resetTomorrowRun();
+    return NextResponse.json({ success: true, data: { count } });
+  } catch (err) {
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
   }
 }

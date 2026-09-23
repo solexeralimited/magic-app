@@ -6,7 +6,7 @@ const DB = process.env.DATABASE_URL;
 
 describe.skipIf(!DB)('run lifecycle (integration)', async () => {
   const { prisma } = await import('@/lib/prisma');
-  const { updateJobStatus, promoteToDailyRuns, generateTomorrowRuns, tomorrowRunExists, AlreadyPromotedError } = await import('@/lib/db');
+  const { updateJobStatus, promoteToDailyRuns, generateTomorrowRuns, tomorrowRunExists, resetTomorrowRun, AlreadyPromotedError } = await import('@/lib/db');
 
   const wipe = async () => {
     await prisma.runLog.deleteMany({});
@@ -184,6 +184,31 @@ describe.skipIf(!DB)('run lifecycle (integration)', async () => {
     const master = await masterJob();
     await copyOf(master, 'Tomorrow');
     expect(await tomorrowRunExists()).toBe(1);
+  });
+
+  it('resetTomorrowRun clears tomorrow but leaves far-future adhoc jobs, Master and Daily untouched', async () => {
+    const tomorrowDate = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+    const nextWeekDate = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
+
+    const dueMaster = await masterJob();
+    await copyOf(dueMaster, 'Tomorrow', { scheduledDate: tomorrowDate });
+    const futureMaster = await masterJob({ customerName: 'Next Week Adhoc', address: '9 Later St' });
+    const futureCopy = await copyOf(futureMaster, 'Tomorrow', { scheduledDate: nextWeekDate });
+    const dailyMaster = await masterJob({ customerName: 'Live Today', address: '3 Live St' });
+    await copyOf(dailyMaster, 'Daily');
+
+    const count = await resetTomorrowRun();
+    expect(count).toBe(1); // only tomorrow's own batch
+
+    expect(await prisma.job.count({ where: { runType: 'Tomorrow' } })).toBe(1); // the far-future adhoc job survives
+    const stillTomorrow = await prisma.job.findUnique({ where: { id: futureCopy.id } });
+    expect(stillTomorrow?.runType).toBe('Tomorrow');
+    expect(await prisma.job.count({ where: { runType: 'Master' } })).toBe(3);
+    expect(await prisma.job.count({ where: { runType: 'Daily' } })).toBe(1);
+  });
+
+  it('resetTomorrowRun no-ops cleanly when Tomorrow is already empty', async () => {
+    expect(await resetTomorrowRun()).toBe(0);
   });
 
   it('generateTomorrowRuns copies due jobs for tomorrow (or refuses on weekends)', async () => {
