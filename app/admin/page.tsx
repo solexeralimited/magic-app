@@ -426,7 +426,7 @@ export default function AdminPage() {
     isAdmin && tab === 'jobs' ? masterQuery : null, fetcher
   );
 
-  const dailyDriver = selectedDriver || drivers[0]?.name || '';
+  const dailyDriver = selectedDriver;
   const { data: dailyData, mutate: mutateDaily } = useSWR<ApiResponse<Job[]>>(
     isAdmin && dailyDriver ? `/api/jobs?driver=${encodeURIComponent(dailyDriver)}` : null,
     fetcher, { refreshInterval: 15_000 }
@@ -441,7 +441,7 @@ export default function AdminPage() {
   const apiKeys = apiKeysData?.data ?? [];
 
   const { data: unscheduledData, mutate: mutateUnscheduled } = useSWR<ApiResponse<Job[]>>(
-    isAdmin && tab === 'dashboard' ? '/api/jobs/unscheduled' : null, fetcher, { refreshInterval: 10_000 }
+    isAdmin && tab === 'dashboard' && dashboardSubTab === 'promote' ? '/api/jobs/unscheduled' : null, fetcher, { refreshInterval: 10_000 }
   );
 
   const { data: allDailyData, mutate: mutateAllDaily } = useSWR<ApiResponse<Job[]>>(
@@ -871,8 +871,12 @@ export default function AdminPage() {
                   }}
                 >
                   {subTab === 'overview' && 'Overview'}
-                  {subTab === 'generate' && 'Generate'}
-                  {subTab === 'promote' && 'Promote'}
+                  {subTab === 'generate' && (
+                    <>Generate{tomorrowJobs.length > 0 && <span className="badge" style={{ marginLeft: 6, background: 'rgba(34,211,238,0.15)', color: '#67E8F9', fontSize: '10px' }}>{tomorrowJobs.length}</span>}</>
+                  )}
+                  {subTab === 'promote' && (
+                    <>Promote{allDailyJobs.length > 0 && <span className="badge" style={{ marginLeft: 6, background: 'rgba(16,185,129,0.2)', color: '#34D399', fontSize: '10px' }}>{driverSummaries.reduce((n, d) => n + d.done, 0)}/{allDailyJobs.length}</span>}</>
+                  )}
                   {dashboardSubTab === subTab && (
                     <div className="absolute bottom-0 left-0 right-0 h-0.5" style={{ background: 'var(--amber)' }} />
                   )}
@@ -941,6 +945,9 @@ export default function AdminPage() {
                     </div>
                   </div>
                 )}
+
+                {/* Tomorrow's run — dispatch working copy, editable until promoted */}
+                <TomorrowDispatch drivers={drivers} onFlash={flash} />
               </div>
             )}
 
@@ -1004,308 +1011,305 @@ export default function AdminPage() {
                     </div>
                   </div>
                 )}
-              </div>
-            )}
-          </div>
 
-          {/* Dashboard search — customer/address + map link */}
-          <div className="card-shell p-4">
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: 'var(--text-tertiary)' }} />
-                <input
-                  type="search"
-                  value={dailySearch}
-                  onChange={e => setDailySearch(e.target.value)}
-                  placeholder="Search customer or address…"
-                  className="w-full pl-9 pr-4 py-2.5 rounded-xl text-sm outline-none"
-                  style={{ background: 'var(--shell-raised)', border: '1px solid var(--shell-border)', color: '#fff', fontFamily: 'var(--font-dm-sans)' }}
-                />
-              </div>
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: 'var(--text-tertiary)' }} />
-                <input
-                  type="search"
-                  value={dailyMapLinkSearch}
-                  onChange={e => setDailyMapLinkSearch(e.target.value)}
-                  placeholder="Search map link…"
-                  className="w-full pl-9 pr-4 py-2.5 rounded-xl text-sm outline-none"
-                  style={{ background: 'var(--shell-raised)', border: '1px solid var(--shell-border)', color: '#fff', fontFamily: 'var(--font-dm-sans)' }}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Driver picker */}
-          <div className="card-shell p-4">
-            <label className={lbl} style={{ color: 'var(--text-tertiary)' }}>View driver</label>
-            <select
-              value={selectedDriver}
-              onChange={e => setSelectedDriver(e.target.value)}
-              className={inp}
-              style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: '#fff' }}
-            >
-              <option value="">All Drivers</option>
-              {drivers.filter(d => d.isActive).map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
-            </select>
-          </div>
-
-          {/* Tomorrow's run — dispatch working copy, editable until promoted */}
-          <TomorrowDispatch drivers={drivers} onFlash={flash} />
-
-          {/* All-drivers progress grid */}
-          {selectedDriver === '' && (
-            <div className="space-y-2">
-              {allDailyJobs.length === 0 ? (
-                <p className="text-xs text-center py-4" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
-                  No daily run active — generate and promote a run first
-                </p>
-              ) : driverSummaries.map(d => {
-                const pct = d.total > 0 ? Math.round((d.done / d.total) * 100) : 0;
-                return (
-                  <div
-                    key={d.name}
-                    className="card-shell p-4 cursor-pointer transition-all"
-                    onClick={() => setSelectedDriver(d.name)}
-                    onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--amber)')}
-                    onMouseLeave={e => (e.currentTarget.style.borderColor = '')}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="font-semibold text-sm" style={{ color: '#fff', fontFamily: 'var(--font-dm-sans)' }}>{d.name}</p>
-                      <div className="flex items-center gap-2">
-                        {d.issues > 0 && (
-                          <span className="badge badge-issue" style={{ fontSize: '10px' }}>{d.issues} issue{d.issues !== 1 ? 's' : ''}</span>
-                        )}
-                        {d.cantAccess > 0 && (
-                          <span className="badge badge-cant" style={{ fontSize: '10px' }}>{d.cantAccess} no access</span>
-                        )}
-                        <span className="text-xs font-semibold" style={{ color: pct === 100 ? '#34D399' : 'var(--amber)', fontFamily: 'var(--font-dm-sans)' }}>
-                          {d.done}/{d.total}
-                        </span>
-                      </div>
+                {/* Dashboard search — customer/address + map link */}
+                <div className="card-shell p-4">
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: 'var(--text-tertiary)' }} />
+                      <input
+                        type="search"
+                        value={dailySearch}
+                        onChange={e => setDailySearch(e.target.value)}
+                        placeholder="Search customer or address…"
+                        className="w-full pl-9 pr-4 py-2.5 rounded-xl text-sm outline-none"
+                        style={{ background: 'var(--shell-raised)', border: '1px solid var(--shell-border)', color: '#fff', fontFamily: 'var(--font-dm-sans)' }}
+                      />
                     </div>
-                    <div className="w-full rounded-full overflow-hidden" style={{ height: 4, background: 'var(--shell-border)' }}>
-                      <div
-                        className="h-full rounded-full transition-all duration-500"
-                        style={{ width: `${pct}%`, background: pct === 100 ? '#10B981' : 'var(--amber)' }}
+                    <div className="relative flex-1">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: 'var(--text-tertiary)' }} />
+                      <input
+                        type="search"
+                        value={dailyMapLinkSearch}
+                        onChange={e => setDailyMapLinkSearch(e.target.value)}
+                        placeholder="Search map link…"
+                        className="w-full pl-9 pr-4 py-2.5 rounded-xl text-sm outline-none"
+                        style={{ background: 'var(--shell-raised)', border: '1px solid var(--shell-border)', color: '#fff', fontFamily: 'var(--font-dm-sans)' }}
                       />
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Stats grid — single driver */}
-          {selectedDriver !== '' && (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              <StatsCard label="Total Jobs"  value={stats.totalJobs}      color="gray"   icon={<List className="w-4 h-4" />} />
-              <StatsCard label="Completed"   value={stats.completedJobs}  color="green"  icon={<CheckCircle2 className="w-4 h-4" />} />
-              <StatsCard label="Pending"     value={stats.pendingJobs}    color="amber"  icon={<Clock className="w-4 h-4" />} />
-              <StatsCard label="Issues"      value={stats.issueJobs}      color="red"    icon={<AlertTriangle className="w-4 h-4" />} />
-              <StatsCard label="No Access"   value={stats.cantAccessJobs} color="orange" icon={<Lock className="w-4 h-4" />} />
-              <StatsCard label="Rate"        value={`${stats.completionRate}%`} color="green" icon={<BarChart3 className="w-4 h-4" />} />
-            </div>
-          )}
-
-          {/* Alerts */}
-          {(issueJobs.length > 0 || cantAccessJobs.length > 0) && (
-            <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-widest px-1" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
-                Alerts
-              </p>
-              {issueJobs.map(job => (
-                <div key={job.id} className="rounded-2xl p-4" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
-                  <div className="flex gap-3">
-                    <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: '#EF4444' }} />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm" style={{ color: '#FCA5A5', fontFamily: 'var(--font-dm-sans)' }}>{job.customerName}</p>
-                      <p className="text-xs mt-0.5" style={{ color: '#F87171', fontFamily: 'var(--font-dm-sans)' }}>{job.address}</p>
-                      <p className="text-xs mt-1" style={{ color: '#FCA5A5', fontFamily: 'var(--font-dm-sans)' }}>{job.issueNotes || 'Issue reported'} · {job.driverName}</p>
-                    </div>
-                    <div className="flex flex-col gap-1.5 flex-shrink-0 self-start">
-                      <button
-                        onClick={() => handleReschedule(job.id)}
-                        className="text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all"
-                        style={{ background: 'rgba(245,158,11,0.12)', color: 'var(--amber)', border: '1px solid rgba(245,158,11,0.25)', fontFamily: 'var(--font-dm-sans)' }}
-                      >
-                        Reschedule
-                      </button>
-                      <button
-                        onClick={() => handleNotRequired(job.id)}
-                        className="text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all"
-                        style={{ background: 'rgba(107,114,128,0.12)', color: '#9CA3AF', border: '1px solid rgba(107,114,128,0.3)', fontFamily: 'var(--font-dm-sans)' }}
-                      >
-                        Not Required
-                      </button>
-                    </div>
-                  </div>
                 </div>
-              ))}
-              {cantAccessJobs.map(job => (
-                <div key={job.id} className="rounded-2xl p-4" style={{ background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.2)' }}>
-                  <div className="flex gap-3">
-                    <Lock className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: '#F97316' }} />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm" style={{ color: '#FED7AA', fontFamily: 'var(--font-dm-sans)' }}>{job.customerName}</p>
-                      <p className="text-xs mt-0.5" style={{ color: '#FDBA74', fontFamily: 'var(--font-dm-sans)' }}>{job.address} · {job.driverName}</p>
-                    </div>
-                    <div className="flex flex-col gap-1.5 flex-shrink-0 self-start">
-                      <button
-                        onClick={() => handleReschedule(job.id)}
-                        className="text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all"
-                        style={{ background: 'rgba(245,158,11,0.12)', color: 'var(--amber)', border: '1px solid rgba(245,158,11,0.25)', fontFamily: 'var(--font-dm-sans)' }}
-                      >
-                        Reschedule
-                      </button>
-                      <button
-                        onClick={() => handleNotRequired(job.id)}
-                        className="text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all"
-                        style={{ background: 'rgba(107,114,128,0.12)', color: '#9CA3AF', border: '1px solid rgba(107,114,128,0.3)', fontFamily: 'var(--font-dm-sans)' }}
-                      >
-                        Not Required
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
 
-          {/* Task Bar — unscheduled jobs waiting to be assigned */}
-          {unscheduledJobs.length > 0 && (
-            <div className="space-y-2">
-              <div className="flex items-baseline gap-2 px-1">
-                <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--amber)', fontFamily: 'var(--font-dm-sans)' }}>
-                  Task Bar
-                </p>
-                <p className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
-                  {unscheduledJobs.length} job{unscheduledJobs.length !== 1 ? 's' : ''} waiting to be assigned
-                </p>
-              </div>
-              {unscheduledJobs.map(job => (
-                <div
-                  key={job.id}
-                  className="card-shell p-4 space-y-3"
-                  style={{ borderLeft: '3px solid var(--amber)' }}
-                >
-                  <div className="flex items-start gap-3">
-                    <div
-                      className="flex-shrink-0 flex items-center justify-center rounded-lg text-xs font-bold"
-                      style={{ width: 30, height: 30, background: 'rgba(245,158,11,0.12)', color: 'var(--amber)', fontFamily: 'var(--font-sora)' }}
-                    >
-                      {job.jobOrder}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm truncate" style={{ color: '#fff', fontFamily: 'var(--font-dm-sans)' }}>{job.customerName}</p>
-                      <p className="text-xs truncate mt-0.5" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>{job.address}</p>
-                      <div className="flex gap-1.5 mt-1 flex-wrap">
-                        <span className="badge" style={{ background: 'var(--shell-border)', color: 'var(--text-tertiary)', fontSize: '10px' }}>{job.jobType}</span>
-                        <span className="badge" style={{ background: 'rgba(139,92,246,0.1)', color: '#7C3AED', fontSize: '10px' }}>was {job.driverName}</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <select
-                      value={taskBarAssign[job.id] || ''}
-                      onChange={e => setTaskBarAssign(prev => ({ ...prev, [job.id]: e.target.value }))}
-                      className={`${inp} flex-1`}
-                      style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: taskBarAssign[job.id] ? '#fff' : 'var(--text-tertiary)' }}
-                    >
-                      <option value="">Assign to driver…</option>
-                      {drivers.filter(d => d.isActive).map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
-                    </select>
-                    <button
-                      onClick={() => handleAssignJob(job.id)}
-                      disabled={!taskBarAssign[job.id]}
-                      className="px-4 py-2 rounded-xl text-sm font-semibold transition-all disabled:opacity-40 flex-shrink-0"
-                      style={{ background: 'var(--amber)', color: '#000', fontFamily: 'var(--font-dm-sans)' }}
-                    >
-                      Assign
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Today's jobs with search + reallocation */}
-          {dailyJobs.length > 0 && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between px-1">
-                <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
-                  Today&apos;s Jobs
-                </p>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
-                    {filteredDailyJobs.length} / {dailyJobs.length}
-                  </span>
-                  <button
-                    onClick={() => { setSelectMode(s => !s); setSelectedJobIds(new Set()); }}
-                    className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all"
-                    style={{
-                      background: selectMode ? 'rgba(245,158,11,0.15)' : 'var(--shell-border)',
-                      color: selectMode ? 'var(--amber)' : 'var(--text-tertiary)',
-                      border: selectMode ? '1px solid rgba(245,158,11,0.3)' : '1px solid transparent',
-                      fontFamily: 'var(--font-dm-sans)',
-                    }}
+                {/* Driver picker */}
+                <div className="card-shell p-4">
+                  <label className={lbl} style={{ color: 'var(--text-tertiary)' }}>View driver</label>
+                  <select
+                    value={selectedDriver}
+                    onChange={e => setSelectedDriver(e.target.value)}
+                    className={inp}
+                    style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: '#fff' }}
                   >
-                    <Users2 className="w-3 h-3" />
-                    {selectMode ? 'Cancel' : 'Reassign'}
-                  </button>
+                    <option value="">All Drivers</option>
+                    {drivers.filter(d => d.isActive).map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+                  </select>
                 </div>
-              </div>
-              {selectMode && (
-                <p className="text-xs px-1" style={{ color: 'var(--amber)', fontFamily: 'var(--font-dm-sans)' }}>
-                  {selectedJobIds.size > 0 ? `${selectedJobIds.size} selected — pick a driver below` : 'Tap jobs to select for reassignment'}
-                </p>
-              )}
-              <div className="space-y-2">
-                {filteredDailyJobs.map(job => {
-                  const isSelected = selectedJobIds.has(job.id);
-                  return (
-                    <div
-                      key={job.id}
-                      className="card-shell p-3 flex items-center gap-3 transition-all"
-                      style={{ cursor: selectMode ? 'pointer' : undefined, outline: isSelected ? '2px solid var(--amber)' : undefined, outlineOffset: '-2px' }}
-                      onClick={selectMode ? () => setSelectedJobIds(prev => {
-                        const next = new Set(prev);
-                        if (next.has(job.id)) next.delete(job.id); else next.add(job.id);
-                        return next;
-                      }) : undefined}
-                    >
-                      {selectMode && (
+
+                {/* All-drivers progress grid */}
+                {selectedDriver === '' && (
+                  <div className="space-y-2">
+                    {allDailyJobs.length === 0 ? (
+                      <p className="text-xs text-center py-4" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                        No daily run active — generate and promote a run first
+                      </p>
+                    ) : driverSummaries.map(d => {
+                      const pct = d.total > 0 ? Math.round((d.done / d.total) * 100) : 0;
+                      return (
                         <div
-                          className="flex-shrink-0 flex items-center justify-center rounded-md transition-all"
-                          style={{ width: 20, height: 20, background: isSelected ? 'var(--amber)' : 'var(--shell-raised)', border: `1.5px solid ${isSelected ? 'var(--amber)' : 'var(--shell-border)'}` }}
+                          key={d.name}
+                          className="card-shell p-4 cursor-pointer transition-all"
+                          onClick={() => setSelectedDriver(d.name)}
+                          onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--amber)')}
+                          onMouseLeave={e => (e.currentTarget.style.borderColor = '')}
                         >
-                          {isSelected && <Check className="w-3 h-3" style={{ color: '#000' }} />}
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="font-semibold text-sm" style={{ color: '#fff', fontFamily: 'var(--font-dm-sans)' }}>{d.name}</p>
+                            <div className="flex items-center gap-2">
+                              {d.issues > 0 && (
+                                <span className="badge badge-issue" style={{ fontSize: '10px' }}>{d.issues} issue{d.issues !== 1 ? 's' : ''}</span>
+                              )}
+                              {d.cantAccess > 0 && (
+                                <span className="badge badge-cant" style={{ fontSize: '10px' }}>{d.cantAccess} no access</span>
+                              )}
+                              <span className="text-xs font-semibold" style={{ color: pct === 100 ? '#34D399' : 'var(--amber)', fontFamily: 'var(--font-dm-sans)' }}>
+                                {d.done}/{d.total}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="w-full rounded-full overflow-hidden" style={{ height: 4, background: 'var(--shell-border)' }}>
+                            <div
+                              className="h-full rounded-full transition-all duration-500"
+                              style={{ width: `${pct}%`, background: pct === 100 ? '#10B981' : 'var(--amber)' }}
+                            />
+                          </div>
                         </div>
-                      )}
-                      <div
-                        className="flex-shrink-0 flex items-center justify-center rounded-lg text-xs font-bold"
-                        style={{ width: 30, height: 30, background: `${statusColor(job.status)}18`, color: statusColor(job.status), fontFamily: 'var(--font-sora)' }}
-                      >
-                        {job.jobOrder}
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Stats grid — single driver */}
+                {selectedDriver !== '' && (
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    <StatsCard label="Total Jobs"  value={stats.totalJobs}      color="gray"   icon={<List className="w-4 h-4" />} />
+                    <StatsCard label="Completed"   value={stats.completedJobs}  color="green"  icon={<CheckCircle2 className="w-4 h-4" />} />
+                    <StatsCard label="Pending"     value={stats.pendingJobs}    color="amber"  icon={<Clock className="w-4 h-4" />} />
+                    <StatsCard label="Issues"      value={stats.issueJobs}      color="red"    icon={<AlertTriangle className="w-4 h-4" />} />
+                    <StatsCard label="No Access"   value={stats.cantAccessJobs} color="orange" icon={<Lock className="w-4 h-4" />} />
+                    <StatsCard label="Rate"        value={`${stats.completionRate}%`} color="green" icon={<BarChart3 className="w-4 h-4" />} />
+                  </div>
+                )}
+
+                {/* Alerts */}
+                {(issueJobs.length > 0 || cantAccessJobs.length > 0) && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-widest px-1" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                      Alerts
+                    </p>
+                    {issueJobs.map(job => (
+                      <div key={job.id} className="rounded-2xl p-4" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+                        <div className="flex gap-3">
+                          <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: '#EF4444' }} />
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-sm" style={{ color: '#FCA5A5', fontFamily: 'var(--font-dm-sans)' }}>{job.customerName}</p>
+                            <p className="text-xs mt-0.5" style={{ color: '#F87171', fontFamily: 'var(--font-dm-sans)' }}>{job.address}</p>
+                            <p className="text-xs mt-1" style={{ color: '#FCA5A5', fontFamily: 'var(--font-dm-sans)' }}>{job.issueNotes || 'Issue reported'} · {job.driverName}</p>
+                          </div>
+                          <div className="flex flex-col gap-1.5 flex-shrink-0 self-start">
+                            <button
+                              onClick={() => handleReschedule(job.id)}
+                              className="text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all"
+                              style={{ background: 'rgba(245,158,11,0.12)', color: 'var(--amber)', border: '1px solid rgba(245,158,11,0.25)', fontFamily: 'var(--font-dm-sans)' }}
+                            >
+                              Reschedule
+                            </button>
+                            <button
+                              onClick={() => handleNotRequired(job.id)}
+                              className="text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all"
+                              style={{ background: 'rgba(107,114,128,0.12)', color: '#9CA3AF', border: '1px solid rgba(107,114,128,0.3)', fontFamily: 'var(--font-dm-sans)' }}
+                            >
+                              Not Required
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold truncate" style={{ color: '#fff', fontFamily: 'var(--font-dm-sans)' }}>{job.customerName}</p>
-                        <p className="text-xs truncate" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>{job.address} · {job.driverName}</p>
+                    ))}
+                    {cantAccessJobs.map(job => (
+                      <div key={job.id} className="rounded-2xl p-4" style={{ background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.2)' }}>
+                        <div className="flex gap-3">
+                          <Lock className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: '#F97316' }} />
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-sm" style={{ color: '#FED7AA', fontFamily: 'var(--font-dm-sans)' }}>{job.customerName}</p>
+                            <p className="text-xs mt-0.5" style={{ color: '#FDBA74', fontFamily: 'var(--font-dm-sans)' }}>{job.address} · {job.driverName}</p>
+                          </div>
+                          <div className="flex flex-col gap-1.5 flex-shrink-0 self-start">
+                            <button
+                              onClick={() => handleReschedule(job.id)}
+                              className="text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all"
+                              style={{ background: 'rgba(245,158,11,0.12)', color: 'var(--amber)', border: '1px solid rgba(245,158,11,0.25)', fontFamily: 'var(--font-dm-sans)' }}
+                            >
+                              Reschedule
+                            </button>
+                            <button
+                              onClick={() => handleNotRequired(job.id)}
+                              className="text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all"
+                              style={{ background: 'rgba(107,114,128,0.12)', color: '#9CA3AF', border: '1px solid rgba(107,114,128,0.3)', fontFamily: 'var(--font-dm-sans)' }}
+                            >
+                              Not Required
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                      <span className={`badge ${
-                        job.status === 'Done' ? 'badge-done' : job.status === 'Issue' ? 'badge-issue' : job.status === 'CouldNotAccess' ? 'badge-cant' : 'badge-pending'
-                      }`} style={{ flexShrink: 0, fontSize: '10px' }}>
-                        {statusLabel(job.status)}
-                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Task Bar — unscheduled jobs waiting to be assigned */}
+                {unscheduledJobs.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex items-baseline gap-2 px-1">
+                      <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--amber)', fontFamily: 'var(--font-dm-sans)' }}>
+                        Task Bar
+                      </p>
+                      <p className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                        {unscheduledJobs.length} job{unscheduledJobs.length !== 1 ? 's' : ''} waiting to be assigned
+                      </p>
                     </div>
-                  );
-                })}
-                {filteredDailyJobs.length === 0 && (
-                  <p className="text-center text-sm py-6" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>No jobs match search</p>
+                    {unscheduledJobs.map(job => (
+                      <div
+                        key={job.id}
+                        className="card-shell p-4 space-y-3"
+                        style={{ borderLeft: '3px solid var(--amber)' }}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div
+                            className="flex-shrink-0 flex items-center justify-center rounded-lg text-xs font-bold"
+                            style={{ width: 30, height: 30, background: 'rgba(245,158,11,0.12)', color: 'var(--amber)', fontFamily: 'var(--font-sora)' }}
+                          >
+                            {job.jobOrder}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-sm truncate" style={{ color: '#fff', fontFamily: 'var(--font-dm-sans)' }}>{job.customerName}</p>
+                            <p className="text-xs truncate mt-0.5" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>{job.address}</p>
+                            <div className="flex gap-1.5 mt-1 flex-wrap">
+                              <span className="badge" style={{ background: 'var(--shell-border)', color: 'var(--text-tertiary)', fontSize: '10px' }}>{job.jobType}</span>
+                              <span className="badge" style={{ background: 'rgba(139,92,246,0.1)', color: '#7C3AED', fontSize: '10px' }}>was {job.driverName}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <select
+                            value={taskBarAssign[job.id] || ''}
+                            onChange={e => setTaskBarAssign(prev => ({ ...prev, [job.id]: e.target.value }))}
+                            className={`${inp} flex-1`}
+                            style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: taskBarAssign[job.id] ? '#fff' : 'var(--text-tertiary)' }}
+                          >
+                            <option value="">Assign to driver…</option>
+                            {drivers.filter(d => d.isActive).map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+                          </select>
+                          <button
+                            onClick={() => handleAssignJob(job.id)}
+                            disabled={!taskBarAssign[job.id]}
+                            className="px-4 py-2 rounded-xl text-sm font-semibold transition-all disabled:opacity-40 flex-shrink-0"
+                            style={{ background: 'var(--amber)', color: '#000', fontFamily: 'var(--font-dm-sans)' }}
+                          >
+                            Assign
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Today's jobs with search + reallocation */}
+                {dailyJobs.length > 0 && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between px-1">
+                      <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                        Today&apos;s Jobs
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                          {filteredDailyJobs.length} / {dailyJobs.length}
+                        </span>
+                        <button
+                          onClick={() => { setSelectMode(s => !s); setSelectedJobIds(new Set()); }}
+                          className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all"
+                          style={{
+                            background: selectMode ? 'rgba(245,158,11,0.15)' : 'var(--shell-border)',
+                            color: selectMode ? 'var(--amber)' : 'var(--text-tertiary)',
+                            border: selectMode ? '1px solid rgba(245,158,11,0.3)' : '1px solid transparent',
+                            fontFamily: 'var(--font-dm-sans)',
+                          }}
+                        >
+                          <Users2 className="w-3 h-3" />
+                          {selectMode ? 'Cancel' : 'Reassign'}
+                        </button>
+                      </div>
+                    </div>
+                    {selectMode && (
+                      <p className="text-xs px-1" style={{ color: 'var(--amber)', fontFamily: 'var(--font-dm-sans)' }}>
+                        {selectedJobIds.size > 0 ? `${selectedJobIds.size} selected — pick a driver below` : 'Tap jobs to select for reassignment'}
+                      </p>
+                    )}
+                    <div className="space-y-2">
+                      {filteredDailyJobs.map(job => {
+                        const isSelected = selectedJobIds.has(job.id);
+                        return (
+                          <div
+                            key={job.id}
+                            className="card-shell p-3 flex items-center gap-3 transition-all"
+                            style={{ cursor: selectMode ? 'pointer' : undefined, outline: isSelected ? '2px solid var(--amber)' : undefined, outlineOffset: '-2px' }}
+                            onClick={selectMode ? () => setSelectedJobIds(prev => {
+                              const next = new Set(prev);
+                              if (next.has(job.id)) next.delete(job.id); else next.add(job.id);
+                              return next;
+                            }) : undefined}
+                          >
+                            {selectMode && (
+                              <div
+                                className="flex-shrink-0 flex items-center justify-center rounded-md transition-all"
+                                style={{ width: 20, height: 20, background: isSelected ? 'var(--amber)' : 'var(--shell-raised)', border: `1.5px solid ${isSelected ? 'var(--amber)' : 'var(--shell-border)'}` }}
+                              >
+                                {isSelected && <Check className="w-3 h-3" style={{ color: '#000' }} />}
+                              </div>
+                            )}
+                            <div
+                              className="flex-shrink-0 flex items-center justify-center rounded-lg text-xs font-bold"
+                              style={{ width: 30, height: 30, background: `${statusColor(job.status)}18`, color: statusColor(job.status), fontFamily: 'var(--font-sora)' }}
+                            >
+                              {job.jobOrder}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold truncate" style={{ color: '#fff', fontFamily: 'var(--font-dm-sans)' }}>{job.customerName}</p>
+                              <p className="text-xs truncate" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>{job.address} · {job.driverName}</p>
+                            </div>
+                            <span className={`badge ${
+                              job.status === 'Done' ? 'badge-done' : job.status === 'Issue' ? 'badge-issue' : job.status === 'CouldNotAccess' ? 'badge-cant' : 'badge-pending'
+                            }`} style={{ flexShrink: 0, fontSize: '10px' }}>
+                              {statusLabel(job.status)}
+                            </span>
+                          </div>
+                        );
+                      })}
+                      {filteredDailyJobs.length === 0 && (
+                        <p className="text-center text-sm py-6" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>No jobs match search</p>
+                      )}
+                    </div>
+                  </div>
                 )}
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </>)}
 
 

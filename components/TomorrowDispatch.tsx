@@ -204,27 +204,29 @@ export default function TomorrowDispatch({ drivers, onFlash }: TomorrowDispatchP
         ))}
       </div>
 
-      {/* Reassign bar */}
+      {/* Reassign bar — fixed to the bottom, matching Today's Jobs' reassign bar */}
       {selectMode && selected.size > 0 && (
-        <div className="flex items-center gap-2 mt-3 pt-3" style={{ borderTop: '1px solid var(--shell-border)' }}>
-          <select
-            value={reassignTo}
-            onChange={e => setReassignTo(e.target.value)}
-            className={`${inp} flex-1`}
-            style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: '#fff' }}
-          >
-            <option value="">Move {selected.size} job(s) to…</option>
-            {drivers.filter(d => d.isActive).map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
-          </select>
-          <button
-            onClick={handleReassign}
-            disabled={busy || !reassignTo}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition-all disabled:opacity-40 flex-shrink-0"
-            style={{ background: 'var(--amber)', color: '#000', fontFamily: 'var(--font-dm-sans)' }}
-          >
-            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Users2 className="w-4 h-4" />}
-            Move
-          </button>
+        <div className="fixed bottom-0 left-0 right-0 z-40 p-4" style={{ background: 'var(--shell-raised)', borderTop: '1px solid var(--shell-border)', backdropFilter: 'blur(8px)' }}>
+          <div className="max-w-5xl mx-auto flex items-center gap-3">
+            <select
+              value={reassignTo}
+              onChange={e => setReassignTo(e.target.value)}
+              className={`${inp} flex-1`}
+              style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: '#fff' }}
+            >
+              <option value="">Move {selected.size} job(s) to…</option>
+              {drivers.filter(d => d.isActive).map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+            </select>
+            <button
+              onClick={handleReassign}
+              disabled={busy || !reassignTo}
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-40 flex-shrink-0"
+              style={{ background: 'var(--amber)', color: '#000', fontFamily: 'var(--font-dm-sans)' }}
+            >
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Users2 className="w-4 h-4" />}
+              Move {selected.size}
+            </button>
+          </div>
         </div>
       )}
 
