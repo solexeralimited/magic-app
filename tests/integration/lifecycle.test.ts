@@ -92,10 +92,18 @@ describe.skipIf(!DB)('run lifecycle (integration)', async () => {
     await copyOf(master, 'Daily');
     await updateJobStatus(`tmr-${master.id}`, 'Done'); // creates a RunLog row pointing at the daily job
 
+    // promoteToDailyRuns() no-ops when Tomorrow is empty (regression coverage
+    // elsewhere) — give it something to promote so this test still exercises
+    // the delete-completed-daily-jobs path it's named for.
+    const nextMaster = await masterJob({ customerName: 'Next Batch', address: '5 Next St' });
+    await copyOf(nextMaster, 'Tomorrow');
+
     const result = await promoteToDailyRuns(); // used to throw: RunLog_jobId_fkey RESTRICT
     expect(result.status).toBe('promoted');
 
-    expect(await prisma.job.count({ where: { runType: 'Daily' } })).toBe(0);
+    // The old completed Daily job is gone; only the newly-promoted one remains.
+    expect(await prisma.job.count({ where: { runType: 'Daily' } })).toBe(1);
+    expect(await prisma.job.findUnique({ where: { id: `tmr-${master.id}` } })).toBeNull();
     expect(await prisma.runLog.count()).toBe(1); // history outlives the job row
   });
 
@@ -205,6 +213,31 @@ describe.skipIf(!DB)('run lifecycle (integration)', async () => {
     const copy = await prisma.job.findUnique({ where: { id: `tmr-${due.id}` } });
     expect(copy?.runType).toBe('Tomorrow');
     expect(copy?.status).toBe('Pending');
+  });
+
+  it('generateTomorrowRuns does not compound when clicked repeatedly (regression)', async () => {
+    // Previously the due-jobs filter scanned ALL runTypes, not just Master, so
+    // the Tomorrow copies created by one call matched the same "due tomorrow"
+    // check on the next — inflating the count (and the rows created) with
+    // every repeat click instead of regenerating the same batch each time.
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const dow = tomorrow.getDay();
+    if (dow === 0 || dow === 6) return; // no run generated on weekends
+
+    const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][dow];
+    await masterJob({ day: dayName, jobOrder: 1 });
+    await masterJob({ day: dayName, jobOrder: 2, customerName: 'Second Site', address: '2 Test St' });
+
+    const first = await generateTomorrowRuns();
+    expect(first).toHaveLength(2);
+    const second = await generateTomorrowRuns();
+    expect(second).toHaveLength(2); // same batch, not doubled
+    const third = await generateTomorrowRuns();
+    expect(third).toHaveLength(2); // still not compounding
+
+    expect(await prisma.job.count({ where: { runType: 'Tomorrow' } })).toBe(2);
+    expect(await prisma.job.count({ where: { runType: 'Master' } })).toBe(2); // masters untouched
   });
 
   it('generateTomorrowRuns throws a clean error instead of crashing when already promoted (regression)', async () => {

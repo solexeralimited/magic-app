@@ -166,8 +166,13 @@ export async function generateTomorrowRuns(): Promise<Job[]> {
 
   const scheduledDate = tomorrow.toISOString().split('T')[0];
   const dayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][dayOfWeek];
-  const all = await getAllJobs();
-  const due = all.filter(j => j.day === dayName && isJobDueForDate(j, tomorrow));
+  // Scoped to Master rows only: Tomorrow/Daily copies inherit the same day,
+  // frequency and nextServiceDate from their source master job, so without
+  // this filter they'd independently match the same "due tomorrow" check —
+  // compounding the due list (and the jobs actually created) on every
+  // regenerate, since each pass's Tomorrow copies get counted again next time.
+  const masters = (await prisma.job.findMany({ where: { runType: 'Master' } })).map(toJob);
+  const due = masters.filter(j => j.day === dayName && isJobDueForDate(j, tomorrow));
 
   if (due.length > 0) {
     // These ids are deterministic (tmr-<masterId>), so if this exact batch was
