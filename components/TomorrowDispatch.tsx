@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import useSWR from 'swr';
-import { ChevronUp, ChevronDown, X, Check, Loader2, Plus, Users2, CalendarClock } from 'lucide-react';
+import { ChevronUp, ChevronDown, X, Check, Loader2, Plus, Users2, CalendarClock, Search } from 'lucide-react';
 import { Job, ApiResponse } from '@/types';
 import { qtyLabel } from './JobCard';
 
@@ -37,8 +37,15 @@ export default function TomorrowDispatch({ drivers, onFlash }: TomorrowDispatchP
   const [busy, setBusy] = useState(false);
   const [showAdhoc, setShowAdhoc] = useState(false);
   const [adhoc, setAdhoc] = useState({ driverName: '', customerName: '', address: '', jobType: 'Adhoc', items: '', quantity: '', notes: '', phone: '', callAhead: false, scheduledDate: getDefaultDate() });
+  const [search, setSearch] = useState('');
 
   if (jobs.length === 0) return null;
+
+  // Reordering swaps with the visually-adjacent job, which only lines up with
+  // the true underlying order when nothing is being filtered out.
+  const searchActive = search.trim().length > 0;
+  const matchesSearch = (j: Job) =>
+    j.customerName.toLowerCase().includes(search.toLowerCase()) || j.address.toLowerCase().includes(search.toLowerCase());
 
   const byDriver = new Map<string, Job[]>();
   for (const j of jobs) {
@@ -47,6 +54,10 @@ export default function TomorrowDispatch({ drivers, onFlash }: TomorrowDispatchP
     byDriver.set(j.driverName, list);
   }
   for (const list of byDriver.values()) list.sort((a, b) => a.jobOrder - b.jobOrder);
+
+  const visibleByDriver = Array.from(byDriver.entries())
+    .map(([driverName, driverJobs]) => [driverName, searchActive ? driverJobs.filter(matchesSearch) : driverJobs] as const)
+    .filter(([, visible]) => visible.length > 0);
 
   const call = async (method: string, body: unknown) => {
     const res = await fetch('/api/jobs/tomorrow', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -138,18 +149,33 @@ export default function TomorrowDispatch({ drivers, onFlash }: TomorrowDispatchP
         </div>
       </div>
 
+      <div className="relative mb-3">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: 'var(--text-tertiary)' }} />
+        <input
+          type="search"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search customer or address…"
+          className="w-full pl-9 pr-4 py-2.5 rounded-xl text-sm outline-none"
+          style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: '#fff', fontFamily: 'var(--font-dm-sans)' }}
+        />
+      </div>
+
       <p className="text-xs mb-3" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
         Changes here only affect tomorrow — the master schedule is untouched.
       </p>
 
       <div className="space-y-4">
-        {Array.from(byDriver.entries()).map(([driverName, driverJobs]) => (
+        {visibleByDriver.map(([driverName, visibleJobs]) => {
+          const driverJobs = byDriver.get(driverName)!;
+          return (
           <div key={driverName}>
             <p className="text-xs font-semibold mb-1.5 px-1" style={{ color: '#fff', fontFamily: 'var(--font-dm-sans)' }}>
-              {driverName} <span style={{ color: 'var(--text-tertiary)' }}>· {driverJobs.length} jobs</span>
+              {driverName} <span style={{ color: 'var(--text-tertiary)' }}>· {searchActive ? `${visibleJobs.length} / ${driverJobs.length}` : driverJobs.length} jobs</span>
             </p>
             <div className="space-y-1.5">
-              {driverJobs.map((job, i) => {
+              {visibleJobs.map(job => {
+                const i = driverJobs.indexOf(job);
                 const isSelected = selected.has(job.id);
                 return (
                   <div
@@ -185,12 +211,16 @@ export default function TomorrowDispatch({ drivers, onFlash }: TomorrowDispatchP
                     <span className="badge flex-shrink-0" style={{ background: 'var(--shell-border)', color: 'var(--text-tertiary)', fontSize: '9px' }}>{job.jobType}</span>
                     {!selectMode && (
                       <div className="flex items-center gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
-                        <button onClick={() => handleMove(driverJobs, i, -1)} disabled={i === 0} className="w-6 h-6 flex items-center justify-center rounded-md disabled:opacity-20" style={{ background: 'var(--shell-raised)', color: 'var(--text-tertiary)', border: '1px solid var(--shell-border)' }}>
-                          <ChevronUp className="w-3 h-3" />
-                        </button>
-                        <button onClick={() => handleMove(driverJobs, i, 1)} disabled={i === driverJobs.length - 1} className="w-6 h-6 flex items-center justify-center rounded-md disabled:opacity-20" style={{ background: 'var(--shell-raised)', color: 'var(--text-tertiary)', border: '1px solid var(--shell-border)' }}>
-                          <ChevronDown className="w-3 h-3" />
-                        </button>
+                        {!searchActive && (
+                          <>
+                            <button onClick={() => handleMove(driverJobs, i, -1)} disabled={i === 0} className="w-6 h-6 flex items-center justify-center rounded-md disabled:opacity-20" style={{ background: 'var(--shell-raised)', color: 'var(--text-tertiary)', border: '1px solid var(--shell-border)' }}>
+                              <ChevronUp className="w-3 h-3" />
+                            </button>
+                            <button onClick={() => handleMove(driverJobs, i, 1)} disabled={i === driverJobs.length - 1} className="w-6 h-6 flex items-center justify-center rounded-md disabled:opacity-20" style={{ background: 'var(--shell-raised)', color: 'var(--text-tertiary)', border: '1px solid var(--shell-border)' }}>
+                              <ChevronDown className="w-3 h-3" />
+                            </button>
+                          </>
+                        )}
                         <button onClick={() => handleRemove(job)} className="w-6 h-6 flex items-center justify-center rounded-md" style={{ background: 'rgba(239,68,68,0.08)', color: '#F87171', border: '1px solid rgba(239,68,68,0.15)' }} title="Remove from tomorrow">
                           <X className="w-3 h-3" />
                         </button>
@@ -201,7 +231,11 @@ export default function TomorrowDispatch({ drivers, onFlash }: TomorrowDispatchP
               })}
             </div>
           </div>
-        ))}
+          );
+        })}
+        {searchActive && visibleByDriver.length === 0 && (
+          <p className="text-center text-sm py-6" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>No jobs match search</p>
+        )}
       </div>
 
       {/* Reassign bar — fixed to the bottom, matching Today's Jobs' reassign bar */}

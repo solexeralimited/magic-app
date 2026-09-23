@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateTomorrowRuns, tomorrowRunExists } from '@/lib/db';
+import { generateTomorrowRuns, tomorrowRunExists, AlreadyPromotedError } from '@/lib/db';
 import { sendRunReadyEmail } from '@/lib/notifications';
 
 function authorized(req: NextRequest): boolean {
@@ -26,6 +26,9 @@ export async function GET(req: NextRequest) {
     await sendRunReadyEmail(jobs);
     return NextResponse.json({ success: true, data: { count: jobs.length } });
   } catch (err) {
+    if (err instanceof AlreadyPromotedError) {
+      return NextResponse.json({ success: true, data: { count: 0, skipped: 'already promoted' } });
+    }
     const msg = String(err);
     if (msg.includes('weekend')) {
       return NextResponse.json({ success: true, data: { count: 0, skipped: 'weekend' } });

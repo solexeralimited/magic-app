@@ -6,7 +6,7 @@ const DB = process.env.DATABASE_URL;
 
 describe.skipIf(!DB)('run lifecycle (integration)', async () => {
   const { prisma } = await import('@/lib/prisma');
-  const { updateJobStatus, promoteToDailyRuns, generateTomorrowRuns, tomorrowRunExists } = await import('@/lib/db');
+  const { updateJobStatus, promoteToDailyRuns, generateTomorrowRuns, tomorrowRunExists, AlreadyPromotedError } = await import('@/lib/db');
 
   const wipe = async () => {
     await prisma.runLog.deleteMany({});
@@ -218,6 +218,7 @@ describe.skipIf(!DB)('run lifecycle (integration)', async () => {
     await copyOf(due, 'Daily'); // simulates: generated, then promoted
 
     await expect(generateTomorrowRuns()).rejects.toThrow(/already been generated and promoted/);
+    await expect(generateTomorrowRuns()).rejects.toBeInstanceOf(AlreadyPromotedError); // lets the route distinguish this from a real failure
     expect(await prisma.job.count({ where: { runType: 'Tomorrow' } })).toBe(0); // nothing deleted or crashed into
   });
 
