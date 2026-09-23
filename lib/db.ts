@@ -165,6 +165,19 @@ export async function generateTomorrowRuns(): Promise<Job[]> {
   const all = await getAllJobs();
   const due = all.filter(j => j.day === dayName && isJobDueForDate(j, tomorrow));
 
+  if (due.length > 0) {
+    // These ids are deterministic (tmr-<masterId>), so if this exact batch was
+    // already generated and promoted, they now exist as Daily rows under the
+    // same id — createMany would crash on the primary-key collision. Recognize
+    // that state and say so, instead of reaching into an already-live run.
+    const alreadyPromoted = await prisma.job.count({
+      where: { id: { in: due.map(j => `tmr-${j.id}`) }, runType: 'Daily' },
+    });
+    if (alreadyPromoted > 0) {
+      throw new Error(`Tomorrow's run has already been generated and promoted — ${alreadyPromoted} job(s) are live as today's Daily run. Nothing to regenerate until tomorrow.`);
+    }
+  }
+
   // Clear only tomorrow's previously generated run — adhoc jobs dispatched to
   // a different future date are left alone so regenerating doesn't wipe them.
   await prisma.job.deleteMany({ where: { runType: 'Tomorrow', ...forRunDate(scheduledDate) } });
@@ -197,7 +210,30 @@ export async function generateTomorrowRuns(): Promise<Job[]> {
   return due;
 }
 
-export async function promoteToDailyRuns(): Promise<Job[]> {
+export type PromoteResult =
+  | { status: 'skipped' }
+  | { status: 'requiresConfirm'; unfinishedCount: number }
+  | { status: 'promoted'; jobs: Job[] };
+
+// `force` skips the "drivers still have unfinished work" guard below. It never
+// bypasses the "nothing to promote" case — there is nothing to force there.
+export async function promoteToDailyRuns(force = false): Promise<PromoteResult> {
+  const tomorrowCount = await prisma.job.count({ where: { runType: 'Tomorrow' } });
+  if (tomorrowCount === 0) {
+    // Nothing queued — most likely this run was already promoted. Leave the
+    // current Daily rows (and any driver progress on them) untouched.
+    return { status: 'skipped' };
+  }
+
+  if (!force) {
+    const unfinishedCount = await prisma.job.count({
+      where: { runType: 'Daily', status: { notIn: ['Done', 'NotRequired'] } },
+    });
+    if (unfinishedCount > 0) {
+      return { status: 'requiresConfirm', unfinishedCount };
+    }
+  }
+
   // Archive any remaining daily runs that weren't completed
   await prisma.job.deleteMany({ where: { runType: 'Daily' } });
 
@@ -223,7 +259,7 @@ export async function promoteToDailyRuns(): Promise<Job[]> {
     orderBy: [{ driverName: 'asc' }, { jobOrder: 'asc' }],
   });
 
-  return jobs.map(toJob);
+  return { status: 'promoted', jobs: jobs.map(toJob) };
 }
 
 // ─── Run Log ─────────────────────────────────────────────────────────────────

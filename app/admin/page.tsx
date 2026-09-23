@@ -553,7 +553,29 @@ export default function AdminPage() {
     }
     setGenerating(false);
   };
-  const handlePromote  = async () => { setPromoting(true);  const j = await call('POST', '/api/runs/promote',  {}); flash(j.success ? `✓ Promoted ${j.data.count} jobs` : `✗ ${j.error}`, j.success); if (j.success) { mutateDaily(); mutateAllDaily(); mutateTomorrow(); } setPromoting(false); };
+  const handlePromote = async () => {
+    setPromoting(true);
+    let j = await call('POST', '/api/runs/promote', {});
+    if (!j.success && j.requiresConfirm) {
+      if (confirm(`${j.error}\n\nPromote anyway?`)) {
+        j = await call('POST', '/api/runs/promote', { force: true });
+      } else {
+        setPromoting(false);
+        return;
+      }
+    }
+    if (j.success && j.data.skipped) {
+      flash('Already promoted — nothing new to promote', true);
+    } else {
+      flash(j.success ? `✓ Promoted ${j.data.count} jobs` : `✗ ${j.error}`, j.success);
+    }
+    if (j.success) {
+      mutateDaily();
+      mutateAllDaily();
+      mutateTomorrow();
+    }
+    setPromoting(false);
+  };
   const handleDailySummary = async () => { const j = await call('POST', '/api/cron/daily-summary', {}); flash(j.success ? '✓ Daily summary sent to admin email' : `✗ ${j.error}`, j.success); };
 
   const handleSheetsImport = async () => {
