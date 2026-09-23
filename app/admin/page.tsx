@@ -383,6 +383,7 @@ export default function AdminPage() {
   const [dryRunResult, setDryRunResult]     = useState<{ wouldImport: number; wouldRemove?: number; newIds: number; tabs: string; errors: { row: number; error: string }[] } | null>(null);
   const [generating, setGenerating] = useState(false);
   const [promoting, setPromoting]   = useState(false);
+  const [resettingTomorrow, setResettingTomorrow] = useState(false);
   const [sheetsImporting, setSheetsImporting] = useState(false);
   const [sheetsSyncing, setSheetsSyncing]     = useState(false);
   const [actionMsg, setActionMsg]   = useState<{ text: string; ok: boolean | 'warning' } | null>(null);
@@ -570,6 +571,18 @@ export default function AdminPage() {
     }
     setGenerating(false);
   };
+
+  const handleResetTomorrow = async () => {
+    if (!confirm(`Reset tomorrow's run? This deletes all ${tomorrowJobs.length} generated job(s) — including any reassignments, adhoc additions, or reordering. This cannot be undone.`)) return;
+    setResettingTomorrow(true);
+    const j = await call('DELETE', '/api/runs/generate', {});
+    flash(j.success ? `✓ Reset — ${j.data.count} job(s) cleared` : `✗ ${j.error}`, j.success);
+    if (j.success) {
+      mutateTomorrow();
+    }
+    setResettingTomorrow(false);
+  };
+
   const handlePromote = async () => {
     setPromoting(true);
     let j = await call('POST', '/api/runs/promote', {});
@@ -963,15 +976,26 @@ export default function AdminPage() {
                   {generating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5" />}
                   Generate Tomorrow's Run
                 </button>
-                <button
-                  onClick={handleSheetsImport}
-                  disabled={sheetsImporting}
-                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-all disabled:opacity-50"
-                  style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}
-                >
-                  {sheetsImporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}
-                  Import from Sheets
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleSheetsImport}
+                    disabled={sheetsImporting}
+                    className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-all disabled:opacity-50"
+                    style={{ background: 'var(--shell)', border: '1px solid var(--shell-border)', color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}
+                  >
+                    {sheetsImporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}
+                    Import from Sheets
+                  </button>
+                  <button
+                    onClick={handleResetTomorrow}
+                    disabled={resettingTomorrow || tomorrowJobs.length === 0}
+                    className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-all disabled:opacity-40"
+                    style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#F87171', fontFamily: 'var(--font-dm-sans)' }}
+                  >
+                    {resettingTomorrow ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                    Reset Tomorrow's Run
+                  </button>
+                </div>
 
                 {/* Tomorrow's run — dispatch working copy, editable until promoted */}
                 <TomorrowDispatch drivers={drivers} onFlash={flash} />
