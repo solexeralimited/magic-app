@@ -24,7 +24,17 @@ export async function PATCH(req: NextRequest) {
   if (!session) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
 
   try {
-    const { jobIds, driverName } = await req.json();
+    const body = await req.json();
+
+    if (body.action === 'reorder') {
+      const updates = body.jobs as { id: string; jobOrder: number }[];
+      await Promise.all(
+        updates.map(u => prisma.job.updateMany({ where: { id: u.id, runType: 'Daily' }, data: { jobOrder: u.jobOrder } }))
+      );
+      return NextResponse.json({ success: true });
+    }
+
+    const { jobIds, driverName } = body;
     if (!Array.isArray(jobIds) || jobIds.length === 0 || !driverName) {
       return NextResponse.json({ success: false, error: 'jobIds and driverName required' }, { status: 400 });
     }

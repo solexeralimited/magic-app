@@ -15,7 +15,7 @@ import {
   Send, Bell, List, BarChart3, Loader2, Plus, Trash2, Edit3,
   X, Check, Search, Shield, KeyRound, LogOut, Eye, EyeOff,
   Upload, Copy, Key, FileUp, GripVertical, Users2, LayoutGrid, Table2, Download,
-  FileSpreadsheet, RefreshCw,
+  FileSpreadsheet, RefreshCw, ChevronUp, ChevronDown,
 } from 'lucide-react';
 import Header from '@/components/Header';
 import StatsCard from '@/components/StatsCard';
@@ -526,6 +526,17 @@ export default function AdminPage() {
     return true;
   });
 
+  // Reordering swaps with the visually-adjacent job, which only lines up with
+  // the true underlying order when nothing is being filtered out.
+  const dailySearchActive = Boolean(dailySearch || dailyMapLinkSearch);
+
+  // All-drivers equivalent of filteredDailyJobs — same search, no driver scoping
+  const filteredAllDailyJobs = allDailyJobs.filter(j => {
+    if (dailySearch && !j.customerName.toLowerCase().includes(dailySearch.toLowerCase()) && !j.address.toLowerCase().includes(dailySearch.toLowerCase())) return false;
+    if (dailyMapLinkSearch && !j.mapLink?.toLowerCase().includes(dailyMapLinkSearch.toLowerCase())) return false;
+    return true;
+  });
+
   const flash = (text: string, ok: boolean) => {
     setActionMsg({ text, ok });
     setTimeout(() => setActionMsg(null), 4000);
@@ -577,6 +588,21 @@ export default function AdminPage() {
     setPromoting(false);
   };
   const handleDailySummary = async () => { const j = await call('POST', '/api/cron/daily-summary', {}); flash(j.success ? '✓ Daily summary sent to admin email' : `✗ ${j.error}`, j.success); };
+
+  // Swap with the adjacent job — only meaningful against the unfiltered order,
+  // so callers must disable this while a search filter is narrowing the list.
+  const handleReorderDaily = async (jobs: Job[], index: number, dir: -1 | 1) => {
+    const target = index + dir;
+    if (target < 0 || target >= jobs.length) return;
+    const a = jobs[index];
+    const b = jobs[target];
+    const updates = [
+      { id: a.id, jobOrder: b.jobOrder === a.jobOrder ? a.jobOrder + dir : b.jobOrder },
+      { id: b.id, jobOrder: a.jobOrder },
+    ];
+    await call('PATCH', '/api/jobs', { action: 'reorder', jobs: updates });
+    mutateDaily();
+  };
 
   const handleSheetsImport = async () => {
     if (!confirm('Import from Google Sheets?\n\nThis removes ALL existing master jobs first, then imports fresh from the sheet — the sheet is the source of truth. Jobs created in-app will also be removed. Tomorrow/Daily runs are not affected.')) return;
@@ -937,37 +963,6 @@ export default function AdminPage() {
                   Import from Sheets
                 </button>
 
-                {/* Tomorrow's jobs preview */}
-                {tomorrowJobs.length > 0 && (
-                  <div className="space-y-2 mt-4 pt-4" style={{ borderTop: '1px solid var(--surface-border)' }}>
-                    <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
-                      Tomorrow&apos;s Generated Jobs ({tomorrowJobs.length})
-                    </p>
-                    <div className="space-y-2 max-h-96 overflow-y-auto">
-                      {tomorrowJobs.map(job => (
-                        <div key={job.id} className="card-shell p-3" style={{ background: 'rgba(34,211,238,0.12)', borderLeft: '3px solid rgba(34,211,238,0.5)' }}>
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-semibold" style={{ color: '#fff', fontFamily: 'var(--font-dm-sans)' }}>
-                                {job.address}
-                              </p>
-                              <p className="text-xs" style={{ color: '#9CA3AF', fontFamily: 'var(--font-dm-sans)' }}>
-                                {job.customerName}
-                              </p>
-                              <p className="text-xs mt-1" style={{ color: '#9CA3AF', fontFamily: 'var(--font-dm-sans)' }}>
-                                <strong>{job.driverName}</strong> · {job.jobType}
-                              </p>
-                            </div>
-                            <span className="badge" style={{ background: 'rgba(34,211,238,0.15)', color: '#67E8F9', fontSize: '11px', flexShrink: 0 }}>
-                              #{job.jobOrder}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
                 {/* Tomorrow's run — dispatch working copy, editable until promoted */}
                 <TomorrowDispatch drivers={drivers} onFlash={flash} />
               </div>
@@ -1002,37 +997,6 @@ export default function AdminPage() {
                   <BarChart3 className="w-4 h-4" />
                   Send Daily Summary Email
                 </button>
-
-                {/* Daily jobs preview */}
-                {allDailyJobs.length > 0 && (
-                  <div className="space-y-2 mt-4 pt-4" style={{ borderTop: '1px solid var(--surface-border)' }}>
-                    <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
-                      Promoted Daily Jobs ({allDailyJobs.length})
-                    </p>
-                    <div className="space-y-2 max-h-96 overflow-y-auto">
-                      {allDailyJobs.map(job => (
-                        <div key={job.id} className="card-shell p-3" style={{ background: 'rgba(16,185,129,0.08)', borderLeft: '3px solid rgba(16,185,129,0.5)' }}>
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-semibold" style={{ color: '#fff', fontFamily: 'var(--font-dm-sans)' }}>
-                                {job.address}
-                              </p>
-                              <p className="text-xs" style={{ color: '#9CA3AF', fontFamily: 'var(--font-dm-sans)' }}>
-                                {job.customerName}
-                              </p>
-                              <p className="text-xs mt-1" style={{ color: '#9CA3AF', fontFamily: 'var(--font-dm-sans)' }}>
-                                <strong>{job.driverName}</strong> · {job.jobType}
-                              </p>
-                            </div>
-                            <span className="badge" style={{ background: 'rgba(16,185,129,0.2)', color: '#34D399', fontSize: '11px', flexShrink: 0 }}>
-                              #{job.jobOrder}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
 
                 {/* Dashboard search — customer/address + map link */}
                 <div className="card-shell p-4">
@@ -1116,6 +1080,38 @@ export default function AdminPage() {
                         </div>
                       );
                     })}
+                  </div>
+                )}
+
+                {/* Search results across all drivers — the progress grid above doesn't filter by search */}
+                {selectedDriver === '' && (dailySearch || dailyMapLinkSearch) && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-widest px-1" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                      Search results ({filteredAllDailyJobs.length})
+                    </p>
+                    {filteredAllDailyJobs.map(job => (
+                      <div key={job.id} className="card-shell p-3" style={{ background: 'rgba(16,185,129,0.08)', borderLeft: '3px solid rgba(16,185,129,0.5)' }}>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold" style={{ color: '#fff', fontFamily: 'var(--font-dm-sans)' }}>
+                              {job.address}
+                            </p>
+                            <p className="text-xs" style={{ color: '#9CA3AF', fontFamily: 'var(--font-dm-sans)' }}>
+                              {job.customerName}
+                            </p>
+                            <p className="text-xs mt-1" style={{ color: '#9CA3AF', fontFamily: 'var(--font-dm-sans)' }}>
+                              <strong>{job.driverName}</strong> · {job.jobType}
+                            </p>
+                          </div>
+                          <span className="badge" style={{ background: 'rgba(16,185,129,0.2)', color: '#34D399', fontSize: '11px', flexShrink: 0 }}>
+                            #{job.jobOrder}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                    {filteredAllDailyJobs.length === 0 && (
+                      <p className="text-center text-sm py-6" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>No jobs match search</p>
+                    )}
                   </div>
                 )}
 
@@ -1284,7 +1280,7 @@ export default function AdminPage() {
                       </p>
                     )}
                     <div className="space-y-2">
-                      {filteredDailyJobs.map(job => {
+                      {filteredDailyJobs.map((job, i) => {
                         const isSelected = selectedJobIds.has(job.id);
                         return (
                           <div
@@ -1320,6 +1316,16 @@ export default function AdminPage() {
                             }`} style={{ flexShrink: 0, fontSize: '10px' }}>
                               {statusLabel(job.status)}
                             </span>
+                            {!selectMode && !dailySearchActive && (
+                              <div className="flex items-center gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                                <button onClick={() => handleReorderDaily(filteredDailyJobs, i, -1)} disabled={i === 0} className="w-6 h-6 flex items-center justify-center rounded-md disabled:opacity-20" style={{ background: 'var(--shell-raised)', color: 'var(--text-tertiary)', border: '1px solid var(--shell-border)' }}>
+                                  <ChevronUp className="w-3 h-3" />
+                                </button>
+                                <button onClick={() => handleReorderDaily(filteredDailyJobs, i, 1)} disabled={i === filteredDailyJobs.length - 1} className="w-6 h-6 flex items-center justify-center rounded-md disabled:opacity-20" style={{ background: 'var(--shell-raised)', color: 'var(--text-tertiary)', border: '1px solid var(--shell-border)' }}>
+                                  <ChevronDown className="w-3 h-3" />
+                                </button>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
