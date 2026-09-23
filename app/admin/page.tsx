@@ -2,7 +2,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import useSWR from 'swr';
+import useSWR, { mutate as globalMutate } from 'swr';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors, DragEndEvent,
 } from '@dnd-kit/core';
@@ -568,6 +568,10 @@ export default function AdminPage() {
     }
     if (j.success) {
       mutateTomorrow();
+      // TomorrowDispatch keeps its own SWR cache under this key ('/api/jobs/tomorrow'),
+      // separate from mutateTomorrow()'s '/api/jobs/daily?runType=Tomorrow' — without
+      // this it wouldn't pick up the freshly-generated batch until its own 30s poll.
+      globalMutate('/api/jobs/tomorrow');
     }
     setGenerating(false);
   };
@@ -579,6 +583,7 @@ export default function AdminPage() {
     flash(j.success ? `✓ Reset — ${j.data.count} job(s) cleared` : `✗ ${j.error}`, j.success);
     if (j.success) {
       mutateTomorrow();
+      globalMutate('/api/jobs/tomorrow'); // see handleGenerate — TomorrowDispatch's own cache
     }
     setResettingTomorrow(false);
   };
