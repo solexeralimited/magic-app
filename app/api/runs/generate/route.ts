@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateTomorrowRuns, tomorrowRunExists } from '@/lib/db';
+import { generateTomorrowRuns, tomorrowRunExists, AlreadyPromotedError } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
 
 export async function POST(req: NextRequest) {
@@ -31,6 +31,14 @@ export async function POST(req: NextRequest) {
     const jobs = await generateTomorrowRuns();
     return NextResponse.json({ success: true, data: { count: jobs.length, jobs } });
   } catch (err) {
+    if (err instanceof AlreadyPromotedError) {
+      // Not a failure — nothing was touched. The cron gets a quiet skip;
+      // a manual click gets a warning, not a red error.
+      if (isCron) {
+        return NextResponse.json({ success: true, data: { skipped: true, count: 0 } });
+      }
+      return NextResponse.json({ success: false, warning: true, error: err.message }, { status: 409 });
+    }
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
   }
 }

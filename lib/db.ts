@@ -152,6 +152,10 @@ export async function tomorrowRunExists(): Promise<number> {
   return prisma.job.count({ where: { runType: 'Tomorrow', ...forRunDate(tomorrowDateString()) } });
 }
 
+// Distinguishes "nothing to do, this batch is already live" from a genuine
+// failure — callers use this to show a warning instead of an error.
+export class AlreadyPromotedError extends Error {}
+
 export async function generateTomorrowRuns(): Promise<Job[]> {
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
@@ -174,7 +178,7 @@ export async function generateTomorrowRuns(): Promise<Job[]> {
       where: { id: { in: due.map(j => `tmr-${j.id}`) }, runType: 'Daily' },
     });
     if (alreadyPromoted > 0) {
-      throw new Error(`Tomorrow's run has already been generated and promoted — ${alreadyPromoted} job(s) are live as today's Daily run. Nothing to regenerate until tomorrow.`);
+      throw new AlreadyPromotedError(`Tomorrow's run has already been generated and promoted — ${alreadyPromoted} job(s) are live as today's Daily run. Nothing to regenerate until tomorrow.`);
     }
   }
 

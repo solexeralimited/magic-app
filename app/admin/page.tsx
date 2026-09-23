@@ -385,7 +385,7 @@ export default function AdminPage() {
   const [promoting, setPromoting]   = useState(false);
   const [sheetsImporting, setSheetsImporting] = useState(false);
   const [sheetsSyncing, setSheetsSyncing]     = useState(false);
-  const [actionMsg, setActionMsg]   = useState<{ text: string; ok: boolean } | null>(null);
+  const [actionMsg, setActionMsg]   = useState<{ text: string; ok: boolean | 'warning' } | null>(null);
   const [msgTo, setMsgTo]           = useState('all');
   const [msgText, setMsgText]       = useState('');
   const [sending, setSending]       = useState(false);
@@ -537,7 +537,7 @@ export default function AdminPage() {
     return true;
   });
 
-  const flash = (text: string, ok: boolean) => {
+  const flash = (text: string, ok: boolean | 'warning') => {
     setActionMsg({ text, ok });
     setTimeout(() => setActionMsg(null), 4000);
   };
@@ -558,7 +558,13 @@ export default function AdminPage() {
         return;
       }
     }
-    flash(j.success ? `✓ Generated ${j.data.count} jobs for tomorrow` : `✗ ${j.error}`, j.success);
+    if (j.success) {
+      flash(`✓ Generated ${j.data.count} jobs for tomorrow`, true);
+    } else if (j.warning) {
+      flash(`⚠ ${j.error}`, 'warning');
+    } else {
+      flash(`✗ ${j.error}`, false);
+    }
     if (j.success) {
       mutateTomorrow();
     }
@@ -862,14 +868,18 @@ export default function AdminPage() {
         }
       />
 
-      {/* Flash message — sticky at bottom */}
+      {/* Flash message — floats above the persistent footer and any sticky action
+          bar (Generate/Promote's reassign bars share the same fixed-bottom slot),
+          with a solid background so it stays legible over whatever's beneath it. */}
       {actionMsg && (
         <div
-          className="fixed bottom-0 left-0 right-0 px-4 py-2.5 text-sm font-semibold text-center transition-all z-40"
+          className="fixed left-4 right-4 mx-auto px-4 py-3 text-sm font-semibold text-center rounded-2xl transition-all z-50 shadow-2xl"
           style={{
-            background: actionMsg.ok ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
-            color: actionMsg.ok ? '#34D399' : '#F87171',
-            borderTop: `1px solid ${actionMsg.ok ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}`,
+            bottom: 'calc(52px + env(safe-area-inset-bottom))',
+            maxWidth: '720px',
+            background: 'var(--shell-raised)',
+            color: actionMsg.ok === 'warning' ? 'var(--amber)' : actionMsg.ok ? '#34D399' : '#F87171',
+            border: `1px solid ${actionMsg.ok === 'warning' ? 'rgba(245,158,11,0.35)' : actionMsg.ok ? 'rgba(16,185,129,0.35)' : 'rgba(239,68,68,0.35)'}`,
             fontFamily: 'var(--font-dm-sans)',
           }}
         >
