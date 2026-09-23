@@ -92,7 +92,8 @@ describe.skipIf(!DB)('run lifecycle (integration)', async () => {
     await copyOf(master, 'Daily');
     await updateJobStatus(`tmr-${master.id}`, 'Done'); // creates a RunLog row pointing at the daily job
 
-    await expect(promoteToDailyRuns()).resolves.toBeDefined(); // used to throw: RunLog_jobId_fkey RESTRICT
+    const result = await promoteToDailyRuns(); // used to throw: RunLog_jobId_fkey RESTRICT
+    expect(result.status).toBe('promoted');
 
     expect(await prisma.job.count({ where: { runType: 'Daily' } })).toBe(0);
     expect(await prisma.runLog.count()).toBe(1); // history outlives the job row
@@ -105,7 +106,8 @@ describe.skipIf(!DB)('run lifecycle (integration)', async () => {
     await copyOf(m2, 'Tomorrow', { jobOrder: 2 });
 
     const promoted = await promoteToDailyRuns();
-    expect(promoted).toHaveLength(2);
+    expect(promoted.status).toBe('promoted');
+    if (promoted.status === 'promoted') expect(promoted.jobs).toHaveLength(2);
     expect(await prisma.job.count({ where: { runType: 'Tomorrow' } })).toBe(0);
     expect(await prisma.job.count({ where: { runType: 'Daily' } })).toBe(2);
     expect(await prisma.job.count({ where: { runType: 'Master' } })).toBe(2); // masters untouched
@@ -123,7 +125,8 @@ describe.skipIf(!DB)('run lifecycle (integration)', async () => {
     await copyOf(master, 'Tomorrow', { scheduledDate: tomorrowDate });
 
     const promoted = await promoteToDailyRuns();
-    expect(promoted).toHaveLength(1);
+    expect(promoted.status).toBe('promoted');
+    if (promoted.status === 'promoted') expect(promoted.jobs).toHaveLength(1);
     expect(await prisma.job.count({ where: { runType: 'Daily' } })).toBe(1);
   });
 
@@ -138,12 +141,42 @@ describe.skipIf(!DB)('run lifecycle (integration)', async () => {
     const futureCopy = await copyOf(futureMaster, 'Tomorrow', { scheduledDate: nextWeekDate });
 
     const promoted = await promoteToDailyRuns();
-    expect(promoted).toHaveLength(1);
-    expect(promoted[0].id).toBe(dueCopy.id);
+    expect(promoted.status).toBe('promoted');
+    if (promoted.status === 'promoted') {
+      expect(promoted.jobs).toHaveLength(1);
+      expect(promoted.jobs[0].id).toBe(dueCopy.id);
+    }
     expect(await prisma.job.count({ where: { runType: 'Daily' } })).toBe(1);
 
     const stillTomorrow = await prisma.job.findUnique({ where: { id: futureCopy.id } });
     expect(stillTomorrow?.runType).toBe('Tomorrow');
+  });
+
+  it('promote is a no-op when Tomorrow is empty (regression: used to wipe the live Daily run)', async () => {
+    const master = await masterJob();
+    await copyOf(master, 'Daily');
+
+    const result = await promoteToDailyRuns();
+    expect(result.status).toBe('skipped');
+    expect(await prisma.job.count({ where: { runType: 'Daily' } })).toBe(1); // untouched
+  });
+
+  it('promote requires confirmation when Daily has unfinished driver work', async () => {
+    const existingMaster = await masterJob();
+    await copyOf(existingMaster, 'Daily', { status: 'Pending' });
+
+    const newMaster = await masterJob({ customerName: 'New Batch', address: '5 New St' });
+    await copyOf(newMaster, 'Tomorrow');
+
+    const result = await promoteToDailyRuns();
+    expect(result.status).toBe('requiresConfirm');
+    if (result.status === 'requiresConfirm') expect(result.unfinishedCount).toBe(1);
+    expect(await prisma.job.count({ where: { runType: 'Daily' } })).toBe(1); // untouched until forced
+
+    const forced = await promoteToDailyRuns(true);
+    expect(forced.status).toBe('promoted');
+    if (forced.status === 'promoted') expect(forced.jobs).toHaveLength(1);
+    expect(await prisma.job.count({ where: { runType: 'Daily' } })).toBe(1);
   });
 
   it('tomorrowRunExists powers the generate guard', async () => {
@@ -172,6 +205,20 @@ describe.skipIf(!DB)('run lifecycle (integration)', async () => {
     const copy = await prisma.job.findUnique({ where: { id: `tmr-${due.id}` } });
     expect(copy?.runType).toBe('Tomorrow');
     expect(copy?.status).toBe('Pending');
+  });
+
+  it('generateTomorrowRuns throws a clean error instead of crashing when already promoted (regression)', async () => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const dow = tomorrow.getDay();
+    if (dow === 0 || dow === 6) return; // no run generated on weekends, nothing to promote
+
+    const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][dow];
+    const due = await masterJob({ day: dayName });
+    await copyOf(due, 'Daily'); // simulates: generated, then promoted
+
+    await expect(generateTomorrowRuns()).rejects.toThrow(/already been generated and promoted/);
+    expect(await prisma.job.count({ where: { runType: 'Tomorrow' } })).toBe(0); // nothing deleted or crashed into
   });
 
   it('data reset order: history first, then jobs (what the Danger Zone does)', async () => {

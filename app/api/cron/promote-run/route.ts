@@ -15,11 +15,15 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const jobs = await promoteToDailyRuns();
+    // Never force from a cron: nothing queued, or drivers still mid-run — both
+    // are reasons to skip quietly, not to auto-destroy anything.
+    const result = await promoteToDailyRuns();
 
-    if (jobs.length === 0) {
+    if (result.status !== 'promoted') {
       return NextResponse.json({ success: true, data: { count: 0, skipped: 'no jobs to promote' } });
     }
+
+    const jobs = result.jobs;
 
     void (async () => {
       const subs = await getAllPushSubscriptions();
@@ -40,4 +44,8 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
   }
+}
+
+export async function POST(req: NextRequest) {
+  return GET(req);
 }
