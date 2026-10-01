@@ -1,7 +1,12 @@
 'use client';
 import { useState } from 'react';
 import useSWR from 'swr';
-import { ChevronUp, ChevronDown, X, Check, Loader2, Plus, Users2, CalendarClock, Search } from 'lucide-react';
+import {
+  DndContext, closestCenter, PointerSensor, useSensor, useSensors, DragEndEvent, DragStartEvent, DragOverlay,
+} from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { X, Check, Loader2, Plus, Users2, CalendarClock, Search, GripVertical } from 'lucide-react';
 import { Job, ApiResponse } from '@/types';
 import { qtyLabel } from './JobCard';
 
@@ -22,6 +27,75 @@ interface TomorrowDispatchProps {
 
 const JOB_TYPES = ['Service', 'Delivery', 'Pickup', 'Adhoc'];
 
+// One row in a driver's list. The grip handle is the only draggable surface —
+// the row body stays reserved for the select-mode click target — so dragging
+// and multi-select work at the same time instead of one disabling the other.
+function SortableJobRow({ job, selectMode, isSelected, draggable, onToggleSelect, onRemove }: {
+  job: Job;
+  selectMode: boolean;
+  isSelected: boolean;
+  draggable: boolean;
+  onToggleSelect: () => void;
+  onRemove: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: job.id, disabled: !draggable });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.4 : 1,
+        position: 'relative',
+        zIndex: isDragging ? 10 : undefined,
+        background: 'var(--shell)',
+        border: '1px solid var(--shell-border)',
+        outline: isSelected ? '2px solid var(--amber)' : undefined,
+        outlineOffset: '-2px',
+        cursor: selectMode ? 'pointer' : undefined,
+      }}
+      className="flex items-center gap-2 rounded-xl px-3 py-2 transition-all"
+      onClick={selectMode ? onToggleSelect : undefined}
+    >
+      {draggable && (
+        <button
+          {...attributes}
+          {...listeners}
+          onClick={e => e.stopPropagation()}
+          className="flex-shrink-0 flex items-center justify-center rounded-md cursor-grab active:cursor-grabbing touch-none"
+          style={{ width: 22, height: 22, background: 'var(--shell-raised)', color: 'var(--text-tertiary)', border: '1px solid var(--shell-border)' }}
+        >
+          <GripVertical className="w-3 h-3" />
+        </button>
+      )}
+      {selectMode && (
+        <div
+          className="flex-shrink-0 flex items-center justify-center rounded-md"
+          style={{ width: 18, height: 18, background: isSelected ? 'var(--amber)' : 'var(--shell-raised)', border: `1.5px solid ${isSelected ? 'var(--amber)' : 'var(--shell-border)'}` }}
+        >
+          {isSelected && <Check className="w-3 h-3" style={{ color: '#000' }} />}
+        </div>
+      )}
+      <span className="flex-shrink-0 text-xs font-bold w-6 text-center" style={{ color: 'var(--amber)', fontFamily: 'var(--font-sora)' }}>
+        {job.jobOrder}
+      </span>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-semibold truncate" style={{ color: '#fff', fontFamily: 'var(--font-dm-sans)' }}>
+          {job.customerName}
+          {qtyLabel(job) && <span style={{ color: 'var(--text-tertiary)', fontWeight: 500 }}> · {qtyLabel(job)}</span>}
+        </p>
+        <p className="text-xs truncate" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>{job.address}</p>
+      </div>
+      <span className="badge flex-shrink-0" style={{ background: 'var(--shell-border)', color: 'var(--text-tertiary)', fontSize: '9px' }}>{job.jobType}</span>
+      {!selectMode && (
+        <button onClick={e => { e.stopPropagation(); onRemove(); }} className="w-6 h-6 flex items-center justify-center rounded-md flex-shrink-0" style={{ background: 'rgba(239,68,68,0.08)', color: '#F87171', border: '1px solid rgba(239,68,68,0.15)' }} title="Remove from tomorrow">
+          <X className="w-3 h-3" />
+        </button>
+      )}
+    </div>
+  );
+}
+
 /**
  * Dispatch working-copy editor: everything here edits ONLY tomorrow's run.
  * Reassignments, reordering, adhoc additions and removals never touch the
@@ -38,6 +112,9 @@ export default function TomorrowDispatch({ drivers, onFlash }: TomorrowDispatchP
   const [showAdhoc, setShowAdhoc] = useState(false);
   const [adhoc, setAdhoc] = useState({ driverName: '', customerName: '', address: '', jobType: 'Adhoc', items: '', quantity: '', notes: '', phone: '', callAhead: false, scheduledDate: getDefaultDate() });
   const [search, setSearch] = useState('');
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
   if (jobs.length === 0) return null;
 
@@ -71,15 +148,41 @@ export default function TomorrowDispatch({ drivers, onFlash }: TomorrowDispatchP
       return next;
     });
 
-  const handleMove = async (driverJobs: Job[], index: number, dir: -1 | 1) => {
-    const target = index + dir;
-    if (target < 0 || target >= driverJobs.length) return;
-    const a = driverJobs[index];
-    const b = driverJobs[target];
-    const updates = [
-      { id: a.id, jobOrder: b.jobOrder === a.jobOrder ? a.jobOrder + dir : b.jobOrder },
-      { id: b.id, jobOrder: a.jobOrder },
-    ];
+  const handleDragStart = (event: DragStartEvent) => setActiveDragId(event.active.id as string);
+
+  // Reordering is scoped to one driver's own list — dragging a job onto a
+  // different driver's section is a no-op here (Reassign is the explicit,
+  // separate action for moving a job to someone else's run).
+  const handleDragEnd = async (event: DragEndEvent) => {
+    setActiveDragId(null);
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const activeId = active.id as string;
+    const overId = over.id as string;
+    const activeJob = jobs.find(j => j.id === activeId);
+    const overJob = jobs.find(j => j.id === overId);
+    if (!activeJob || !overJob || activeJob.driverName !== overJob.driverName) return;
+
+    const driverJobs = byDriver.get(activeJob.driverName)!;
+    const ids = driverJobs.map(j => j.id);
+
+    let newIds: string[];
+    if (selectMode && selected.size > 1 && selected.has(activeId) && !selected.has(overId)) {
+      // Drag a multi-selected group together: pull every selected job out,
+      // keeping their relative order, and reinsert them as one block right
+      // before the drop target.
+      const movingIds = ids.filter(id => selected.has(id));
+      const remaining = ids.filter(id => !selected.has(id));
+      const overIdx = remaining.indexOf(overId);
+      newIds = [...remaining.slice(0, overIdx), ...movingIds, ...remaining.slice(overIdx)];
+    } else {
+      const oldIdx = ids.indexOf(activeId);
+      const overIdx = ids.indexOf(overId);
+      newIds = arrayMove(ids, oldIdx, overIdx);
+    }
+
+    const updates = newIds.map((id, i) => ({ id, jobOrder: i + 1 }));
     await call('PATCH', { action: 'reorder', jobs: updates });
     mutate();
   };
@@ -115,6 +218,8 @@ export default function TomorrowDispatch({ drivers, onFlash }: TomorrowDispatchP
   };
 
   const inp = 'input';
+  const activeDragJob = activeDragId ? jobs.find(j => j.id === activeDragId) : undefined;
+  const draggingGroup = Boolean(activeDragId && selectMode && selected.size > 1 && selected.has(activeDragId));
 
   return (
     <div className="card-shell p-4" style={{ borderLeft: '3px solid rgba(16,185,129,0.5)' }}>
@@ -162,81 +267,54 @@ export default function TomorrowDispatch({ drivers, onFlash }: TomorrowDispatchP
       </div>
 
       <p className="text-xs mb-3" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
-        Changes here only affect tomorrow — the master schedule is untouched.
+        {selectMode
+          ? 'Tap jobs to select them, then drag any selected job to move the group together — within the same driver only.'
+          : 'Drag the handle to reorder within a driver. Changes here only affect tomorrow — the master schedule is untouched.'}
       </p>
 
-      <div className="space-y-4">
-        {visibleByDriver.map(([driverName, visibleJobs]) => {
-          const driverJobs = byDriver.get(driverName)!;
-          return (
-          <div key={driverName}>
-            <p className="text-xs font-semibold mb-1.5 px-1" style={{ color: '#fff', fontFamily: 'var(--font-dm-sans)' }}>
-              {driverName} <span style={{ color: 'var(--text-tertiary)' }}>· {searchActive ? `${visibleJobs.length} / ${driverJobs.length}` : driverJobs.length} jobs</span>
-            </p>
-            <div className="space-y-1.5">
-              {visibleJobs.map(job => {
-                const i = driverJobs.indexOf(job);
-                const isSelected = selected.has(job.id);
-                return (
-                  <div
-                    key={job.id}
-                    className="flex items-center gap-2 rounded-xl px-3 py-2 transition-all"
-                    style={{
-                      background: 'var(--shell)',
-                      border: '1px solid var(--shell-border)',
-                      outline: isSelected ? '2px solid var(--amber)' : undefined,
-                      outlineOffset: '-2px',
-                      cursor: selectMode ? 'pointer' : undefined,
-                    }}
-                    onClick={selectMode ? () => toggleSelect(job.id) : undefined}
-                  >
-                    {selectMode && (
-                      <div
-                        className="flex-shrink-0 flex items-center justify-center rounded-md"
-                        style={{ width: 18, height: 18, background: isSelected ? 'var(--amber)' : 'var(--shell-raised)', border: `1.5px solid ${isSelected ? 'var(--amber)' : 'var(--shell-border)'}` }}
-                      >
-                        {isSelected && <Check className="w-3 h-3" style={{ color: '#000' }} />}
-                      </div>
-                    )}
-                    <span className="flex-shrink-0 text-xs font-bold w-6 text-center" style={{ color: 'var(--amber)', fontFamily: 'var(--font-sora)' }}>
-                      {job.jobOrder}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold truncate" style={{ color: '#fff', fontFamily: 'var(--font-dm-sans)' }}>
-                        {job.customerName}
-                        {qtyLabel(job) && <span style={{ color: 'var(--text-tertiary)', fontWeight: 500 }}> · {qtyLabel(job)}</span>}
-                      </p>
-                      <p className="text-xs truncate" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>{job.address}</p>
-                    </div>
-                    <span className="badge flex-shrink-0" style={{ background: 'var(--shell-border)', color: 'var(--text-tertiary)', fontSize: '9px' }}>{job.jobType}</span>
-                    {!selectMode && (
-                      <div className="flex items-center gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
-                        {!searchActive && (
-                          <>
-                            <button onClick={() => handleMove(driverJobs, i, -1)} disabled={i === 0} className="w-6 h-6 flex items-center justify-center rounded-md disabled:opacity-20" style={{ background: 'var(--shell-raised)', color: 'var(--text-tertiary)', border: '1px solid var(--shell-border)' }}>
-                              <ChevronUp className="w-3 h-3" />
-                            </button>
-                            <button onClick={() => handleMove(driverJobs, i, 1)} disabled={i === driverJobs.length - 1} className="w-6 h-6 flex items-center justify-center rounded-md disabled:opacity-20" style={{ background: 'var(--shell-raised)', color: 'var(--text-tertiary)', border: '1px solid var(--shell-border)' }}>
-                              <ChevronDown className="w-3 h-3" />
-                            </button>
-                          </>
-                        )}
-                        <button onClick={() => handleRemove(job)} className="w-6 h-6 flex items-center justify-center rounded-md" style={{ background: 'rgba(239,68,68,0.08)', color: '#F87171', border: '1px solid rgba(239,68,68,0.15)' }} title="Remove from tomorrow">
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+        <div className="space-y-4">
+          {visibleByDriver.map(([driverName, visibleJobs]) => (
+            <div key={driverName}>
+              <p className="text-xs font-semibold mb-1.5 px-1" style={{ color: '#fff', fontFamily: 'var(--font-dm-sans)' }}>
+                {driverName} <span style={{ color: 'var(--text-tertiary)' }}>· {searchActive ? `${visibleJobs.length} / ${byDriver.get(driverName)!.length}` : visibleJobs.length} jobs</span>
+              </p>
+              <SortableContext items={visibleJobs.map(j => j.id)} strategy={verticalListSortingStrategy}>
+                <div className="space-y-1.5">
+                  {visibleJobs.map(job => (
+                    <SortableJobRow
+                      key={job.id}
+                      job={job}
+                      selectMode={selectMode}
+                      isSelected={selected.has(job.id)}
+                      draggable={!searchActive}
+                      onToggleSelect={() => toggleSelect(job.id)}
+                      onRemove={() => handleRemove(job)}
+                    />
+                  ))}
+                </div>
+              </SortableContext>
             </div>
-          </div>
-          );
-        })}
-        {searchActive && visibleByDriver.length === 0 && (
-          <p className="text-center text-sm py-6" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>No jobs match search</p>
-        )}
-      </div>
+          ))}
+          {searchActive && visibleByDriver.length === 0 && (
+            <p className="text-center text-sm py-6" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>No jobs match search</p>
+          )}
+        </div>
+        <DragOverlay>
+          {activeDragJob ? (
+            draggingGroup ? (
+              <div className="rounded-xl px-3 py-2 text-xs font-semibold" style={{ background: 'var(--amber)', color: '#000' }}>
+                Moving {selected.size} jobs
+              </div>
+            ) : (
+              <div className="rounded-xl px-3 py-2 text-xs font-semibold flex items-center gap-2" style={{ background: 'var(--shell-raised)', border: '1px solid var(--shell-border)', color: '#fff' }}>
+                <GripVertical className="w-3 h-3" style={{ color: 'var(--text-tertiary)' }} />
+                {activeDragJob.customerName}
+              </div>
+            )
+          ) : null}
+        </DragOverlay>
+      </DndContext>
 
       {/* Reassign bar — fixed to the bottom, matching Today's Jobs' reassign bar */}
       {selectMode && selected.size > 0 && (
