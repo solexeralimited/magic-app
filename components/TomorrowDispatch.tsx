@@ -110,7 +110,7 @@ export default function TomorrowDispatch({ drivers, onFlash }: TomorrowDispatchP
   const [reassignTo, setReassignTo] = useState('');
   const [busy, setBusy] = useState(false);
   const [showAdhoc, setShowAdhoc] = useState(false);
-  const [adhoc, setAdhoc] = useState({ driverName: '', customerName: '', address: '', jobType: 'Adhoc', items: '', quantity: '', notes: '', phone: '', callAhead: false, scheduledDate: getDefaultDate() });
+  const [adhoc, setAdhoc] = useState({ driverName: '', customerName: '', address: '', jobType: 'Adhoc', items: '', quantity: '', notes: '', mapLink: '', phone: '', callAhead: false, scheduledDate: getDefaultDate() });
   const [search, setSearch] = useState('');
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
 
@@ -211,7 +211,7 @@ export default function TomorrowDispatch({ drivers, onFlash }: TomorrowDispatchP
     onFlash(j.success ? `✓ Adhoc job scheduled for ${adhoc.driverName} on ${dateDisplay}` : `✗ ${j.error}`, j.success);
     if (j.success) {
       setShowAdhoc(false);
-      setAdhoc({ driverName: '', customerName: '', address: '', jobType: 'Adhoc', items: '', quantity: '', notes: '', phone: '', callAhead: false, scheduledDate: getDefaultDate() });
+      setAdhoc({ driverName: '', customerName: '', address: '', jobType: 'Adhoc', items: '', quantity: '', notes: '', mapLink: '', phone: '', callAhead: false, scheduledDate: getDefaultDate() });
       mutate();
     }
     setBusy(false);
@@ -394,6 +394,10 @@ export default function TomorrowDispatch({ drivers, onFlash }: TomorrowDispatchP
                 <div className="col-span-2">
                   <label className="label">Notes</label>
                   <textarea className={inp} rows={2} value={adhoc.notes} onChange={e => setAdhoc(f => ({ ...f, notes: e.target.value }))} />
+                </div>
+                <div className="col-span-2">
+                  <label className="label">Map Link</label>
+                  <input className={inp} type="url" value={adhoc.mapLink} onChange={e => setAdhoc(f => ({ ...f, mapLink: e.target.value }))} placeholder="https://maps.google.com/…" />
                 </div>
                 <div className="col-span-2 flex items-center gap-3">
                   <input type="checkbox" id="adhoc-ca" checked={adhoc.callAhead} onChange={e => setAdhoc(f => ({ ...f, callAhead: e.target.checked }))} className="w-4 h-4 rounded accent-amber-500" />
