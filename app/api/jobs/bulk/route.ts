@@ -4,7 +4,7 @@ import { verifyApiKey } from '@/lib/api-keys';
 import { prisma } from '@/lib/prisma';
 
 const VALID_DAYS  = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-const VALID_TYPES = ['Service', 'Delivery', 'Pickup', 'Adhoc'];
+const VALID_TYPES = ['Service', 'Delivery', 'Pickup', 'Adhoc', 'Swapout'];
 const VALID_FREQS = ['', 'Weekly', 'Fortnightly', '3 Weekly', '4 Weekly'];
 
 interface JobRow {
@@ -139,7 +139,7 @@ export async function POST(req: NextRequest) {
  *       "driverName": "John Smith",       // required — must match an active driver
  *       "day": "Monday",                  // required — Monday–Friday
  *       "jobOrder": 1,                    // integer, default 1
- *       "jobType": "Service",             // Service | Delivery | Pickup | Adhoc
+ *       "jobType": "Service",             // Service | Delivery | Pickup | Adhoc | Swapout
  *       "customerName": "ABC Ltd",        // required
  *       "address": "123 Main St",
  *       "phone": "09 123 4567",

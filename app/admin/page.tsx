@@ -63,7 +63,7 @@ function parseCSV(text: string): Record<string, string>[] {
 
 const DAYS       = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 const FREQUENCIES = ['', 'Fortnightly', '3 Weekly', '4 Weekly'];
-const JOB_TYPES  = ['Service', 'Delivery', 'Pickup', 'Adhoc'];
+const JOB_TYPES  = ['Service', 'Delivery', 'Pickup', 'Adhoc', 'Swapout'];
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
