@@ -5,7 +5,7 @@ import { sheetsConfigured, getTabName, listTabNames, readRows, writeCells, mapHe
 import { getSetting, SETTING_KEYS } from '@/lib/settings';
 
 const VALID_DAYS  = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-const VALID_TYPES = ['Service', 'Delivery', 'Pickup', 'Adhoc'];
+const VALID_TYPES = ['Service', 'Delivery', 'Pickup', 'Adhoc', 'Swapout'];
 const VALID_FREQS = ['', 'Weekly', 'Fortnightly', '3 Weekly', '4 Weekly'];
 
 // Map abbreviated days to full names — includes the longer variants

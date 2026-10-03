@@ -25,7 +25,7 @@ interface TomorrowDispatchProps {
   onFlash: (text: string, ok: boolean) => void;
 }
 
-const JOB_TYPES = ['Service', 'Delivery', 'Pickup', 'Adhoc'];
+const JOB_TYPES = ['Service', 'Delivery', 'Pickup', 'Adhoc', 'Swapout'];
 
 // One row in a driver's list. The grip handle is the only draggable surface —
 // the row body stays reserved for the select-mode click target — so dragging
