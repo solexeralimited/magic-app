@@ -4,7 +4,7 @@ import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import useSWR, { mutate as globalMutate } from 'swr';
 import {
-  DndContext, closestCenter, PointerSensor, useSensor, useSensors, DragEndEvent,
+  DndContext, closestCenter, PointerSensor, useSensor, useSensors, DragEndEvent, DragStartEvent, DragOverlay,
 } from '@dnd-kit/core';
 import {
   SortableContext, verticalListSortingStrategy, useSortable, arrayMove,
@@ -15,7 +15,7 @@ import {
   Send, Bell, List, BarChart3, Loader2, Plus, Trash2, Edit3,
   X, Check, Search, Shield, KeyRound, LogOut, Eye, EyeOff,
   Upload, Copy, Key, FileUp, GripVertical, Users2, LayoutGrid, Table2, Download,
-  FileSpreadsheet, RefreshCw, ChevronUp, ChevronDown,
+  FileSpreadsheet, RefreshCw,
 } from 'lucide-react';
 import Header from '@/components/Header';
 import StatsCard from '@/components/StatsCard';
@@ -418,6 +418,80 @@ function SortableJobItem({ job, onEdit, onDelete, selectable, selected, onToggle
   );
 }
 
+// ── Sortable Daily Job Row (Promote tab) ───────────────────────────────────────
+// The grip handle is the only draggable surface — the row body stays reserved
+// for the select-mode click target — so dragging and multi-select work at the
+// same time instead of one disabling the other. Mirrors TomorrowDispatch's
+// SortableJobRow, adapted for a live status badge and the day-edit action
+// instead of a remove action.
+function SortableDailyJobRow({ job, selectMode, isSelected, draggable, onToggleSelect, onEdit }: {
+  job: Job;
+  selectMode: boolean;
+  isSelected: boolean;
+  draggable: boolean;
+  onToggleSelect: () => void;
+  onEdit: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: job.id, disabled: !draggable });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.4 : 1,
+        position: 'relative',
+        zIndex: isDragging ? 10 : undefined,
+        cursor: selectMode ? 'pointer' : undefined,
+        outline: isSelected ? '2px solid var(--amber)' : undefined,
+        outlineOffset: '-2px',
+      }}
+      className="card-shell p-3 flex items-center gap-3 transition-all"
+      onClick={selectMode ? onToggleSelect : undefined}
+    >
+      {draggable && (
+        <button
+          {...attributes}
+          {...listeners}
+          onClick={e => e.stopPropagation()}
+          className="flex-shrink-0 flex items-center justify-center rounded-md cursor-grab active:cursor-grabbing touch-none"
+          style={{ width: 22, height: 22, background: 'var(--shell-raised)', color: 'var(--text-tertiary)', border: '1px solid var(--shell-border)' }}
+        >
+          <GripVertical className="w-3 h-3" />
+        </button>
+      )}
+      {selectMode && (
+        <div
+          className="flex-shrink-0 flex items-center justify-center rounded-md transition-all"
+          style={{ width: 20, height: 20, background: isSelected ? 'var(--amber)' : 'var(--shell-raised)', border: `1.5px solid ${isSelected ? 'var(--amber)' : 'var(--shell-border)'}` }}
+        >
+          {isSelected && <Check className="w-3 h-3" style={{ color: '#000' }} />}
+        </div>
+      )}
+      <div
+        className="flex-shrink-0 flex items-center justify-center rounded-lg text-xs font-bold"
+        style={{ width: 30, height: 30, background: `${statusColor(job.status)}18`, color: statusColor(job.status), fontFamily: 'var(--font-sora)' }}
+      >
+        {job.jobOrder}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold truncate" style={{ color: '#fff', fontFamily: 'var(--font-dm-sans)' }}>{job.customerName}</p>
+        <p className="text-xs truncate" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>{job.address}</p>
+      </div>
+      <span className={`badge ${
+        job.status === 'Done' ? 'badge-done' : job.status === 'Issue' ? 'badge-issue' : job.status === 'CouldNotAccess' ? 'badge-cant' : 'badge-pending'
+      }`} style={{ flexShrink: 0, fontSize: '10px' }}>
+        {statusLabel(job.status)}
+      </span>
+      {!selectMode && (
+        <button onClick={e => { e.stopPropagation(); onEdit(); }} className="w-6 h-6 flex items-center justify-center rounded-md flex-shrink-0" style={{ background: 'var(--shell-raised)', color: 'var(--text-tertiary)', border: '1px solid var(--shell-border)' }} title="Edit for today only">
+          <Edit3 className="w-3 h-3" />
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ── Main Admin Page ───────────────────────────────────────────────────────────
 export default function AdminPage() {
   const router = useRouter();
@@ -609,22 +683,32 @@ export default function AdminPage() {
     if (histJobType && e.jobType !== histJobType) return false;
     return true;
   });
-  const filteredDailyJobs = dailyJobs.filter(j => {
-    if (dailySearch && !j.customerName.toLowerCase().includes(dailySearch.toLowerCase()) && !j.address.toLowerCase().includes(dailySearch.toLowerCase())) return false;
-    if (dailyMapLinkSearch && !j.mapLink?.toLowerCase().includes(dailyMapLinkSearch.toLowerCase())) return false;
-    return true;
-  });
 
   // Reordering swaps with the visually-adjacent job, which only lines up with
   // the true underlying order when nothing is being filtered out.
   const dailySearchActive = Boolean(dailySearch || dailyMapLinkSearch);
-
-  // All-drivers equivalent of filteredDailyJobs — same search, no driver scoping
-  const filteredAllDailyJobs = allDailyJobs.filter(j => {
+  const matchesDailySearch = (j: Job) => {
     if (dailySearch && !j.customerName.toLowerCase().includes(dailySearch.toLowerCase()) && !j.address.toLowerCase().includes(dailySearch.toLowerCase())) return false;
     if (dailyMapLinkSearch && !j.mapLink?.toLowerCase().includes(dailyMapLinkSearch.toLowerCase())) return false;
     return true;
-  });
+  };
+
+  // Today's full run, grouped by driver — every driver's jobs are visible at
+  // once (like Tomorrow's Run — Dispatch on Generate), not gated behind
+  // picking one from the dropdown. Picking a driver just narrows this down to
+  // their section instead of being the only way to see any job.
+  const byDriverDaily = new Map<string, Job[]>();
+  for (const j of allDailyJobs) {
+    const list = byDriverDaily.get(j.driverName) ?? [];
+    list.push(j);
+    byDriverDaily.set(j.driverName, list);
+  }
+  for (const list of byDriverDaily.values()) list.sort((a, b) => a.jobOrder - b.jobOrder);
+
+  const visibleDailyByDriver = Array.from(byDriverDaily.entries())
+    .filter(([driverName]) => selectedDriver === '' || driverName === selectedDriver)
+    .map(([driverName, jobs]) => [driverName, dailySearchActive ? jobs.filter(matchesDailySearch) : jobs] as const)
+    .filter(([, visible]) => visible.length > 0);
 
   const flash = (text: string, ok: boolean | 'warning') => {
     setActionMsg({ text, ok });
@@ -701,19 +785,53 @@ export default function AdminPage() {
   };
   const handleDailySummary = async () => { const j = await call('POST', '/api/cron/daily-summary', {}); flash(j.success ? '✓ Daily summary sent to admin email' : `✗ ${j.error}`, j.success); };
 
-  // Swap with the adjacent job — only meaningful against the unfiltered order,
-  // so callers must disable this while a search filter is narrowing the list.
-  const handleReorderDaily = async (jobs: Job[], index: number, dir: -1 | 1) => {
-    const target = index + dir;
-    if (target < 0 || target >= jobs.length) return;
-    const a = jobs[index];
-    const b = jobs[target];
-    const updates = [
-      { id: a.id, jobOrder: b.jobOrder === a.jobOrder ? a.jobOrder + dir : b.jobOrder },
-      { id: b.id, jobOrder: a.jobOrder },
-    ];
+  const [dailyActiveDragId, setDailyActiveDragId] = useState<string | null>(null);
+
+  const toggleDailySelect = (id: string) =>
+    setSelectedJobIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+
+  const handleDailyDragStart = (event: DragStartEvent) => setDailyActiveDragId(event.active.id as string);
+
+  // Reordering is scoped to one driver's own section — dragging a job onto a
+  // different driver's section is a no-op here (Reassign is the explicit,
+  // separate action for moving a job to someone else's run).
+  const handleDailyDragEnd = async (event: DragEndEvent) => {
+    setDailyActiveDragId(null);
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const activeId = active.id as string;
+    const overId = over.id as string;
+    const activeJob = allDailyJobs.find(j => j.id === activeId);
+    const overJob = allDailyJobs.find(j => j.id === overId);
+    if (!activeJob || !overJob || activeJob.driverName !== overJob.driverName) return;
+
+    const driverJobs = byDriverDaily.get(activeJob.driverName)!;
+    const ids = driverJobs.map(j => j.id);
+
+    let newIds: string[];
+    if (selectMode && selectedJobIds.size > 1 && selectedJobIds.has(activeId) && !selectedJobIds.has(overId)) {
+      // Drag a multi-selected group together: pull every selected job out,
+      // keeping their relative order, and reinsert them as one block right
+      // before the drop target.
+      const movingIds = ids.filter(id => selectedJobIds.has(id));
+      const remaining = ids.filter(id => !selectedJobIds.has(id));
+      const overIdx = remaining.indexOf(overId);
+      newIds = [...remaining.slice(0, overIdx), ...movingIds, ...remaining.slice(overIdx)];
+    } else {
+      const oldIdx = ids.indexOf(activeId);
+      const overIdx = ids.indexOf(overId);
+      newIds = arrayMove(ids, oldIdx, overIdx);
+    }
+
+    const updates = newIds.map((id, i) => ({ id, jobOrder: i + 1 }));
     await call('PATCH', '/api/jobs', { action: 'reorder', jobs: updates });
     mutateDaily();
+    mutateAllDaily();
   };
 
   const handleEditDailyJob = async (fields: DayJobEdit) => {
@@ -1260,37 +1378,63 @@ export default function AdminPage() {
                   </div>
                 )}
 
-                {/* Search results across all drivers — the progress grid above doesn't filter by search */}
-                {selectedDriver === '' && (dailySearch || dailyMapLinkSearch) && (
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold uppercase tracking-widest px-1" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
-                      Search results ({filteredAllDailyJobs.length})
-                    </p>
-                    {filteredAllDailyJobs.map(job => (
-                      <div key={job.id} className="card-shell p-3" style={{ background: 'rgba(16,185,129,0.08)', borderLeft: '3px solid rgba(16,185,129,0.5)' }}>
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold" style={{ color: '#fff', fontFamily: 'var(--font-dm-sans)' }}>
-                              {job.address}
-                            </p>
-                            <p className="text-xs" style={{ color: '#9CA3AF', fontFamily: 'var(--font-dm-sans)' }}>
-                              {job.customerName}
-                            </p>
-                            <p className="text-xs mt-1" style={{ color: '#9CA3AF', fontFamily: 'var(--font-dm-sans)' }}>
-                              <strong>{job.driverName}</strong> · {job.jobType}
-                            </p>
+                {/* Today's full run, grouped by driver — always visible, drag to
+                    reorder within a driver (and drag a multi-selected group
+                    together), same pattern as Tomorrow's Run — Dispatch. Picking
+                    a driver above just narrows this to their section. */}
+                {selectMode && (
+                  <p className="text-xs px-1" style={{ color: 'var(--amber)', fontFamily: 'var(--font-dm-sans)' }}>
+                    {selectedJobIds.size > 0 ? `${selectedJobIds.size} selected — pick a driver below, or drag one to move the group` : 'Tap jobs to select them for reassignment or a group drag'}
+                  </p>
+                )}
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDailyDragStart} onDragEnd={handleDailyDragEnd}>
+                  <div className="space-y-4">
+                    {visibleDailyByDriver.map(([driverName, visibleJobs]) => (
+                      <div key={driverName}>
+                        <p className="text-xs font-semibold mb-1.5 px-1" style={{ color: '#fff', fontFamily: 'var(--font-dm-sans)' }}>
+                          {driverName} <span style={{ color: 'var(--text-tertiary)' }}>· {dailySearchActive ? `${visibleJobs.length} / ${byDriverDaily.get(driverName)!.length}` : visibleJobs.length} jobs</span>
+                        </p>
+                        <SortableContext items={visibleJobs.map(j => j.id)} strategy={verticalListSortingStrategy}>
+                          <div className="space-y-1.5">
+                            {visibleJobs.map(job => (
+                              <SortableDailyJobRow
+                                key={job.id}
+                                job={job}
+                                selectMode={selectMode}
+                                isSelected={selectedJobIds.has(job.id)}
+                                draggable={!dailySearchActive}
+                                onToggleSelect={() => toggleDailySelect(job.id)}
+                                onEdit={() => setEditingDailyJob(job)}
+                              />
+                            ))}
                           </div>
-                          <span className="badge" style={{ background: 'rgba(16,185,129,0.2)', color: '#34D399', fontSize: '11px', flexShrink: 0 }}>
-                            #{job.jobOrder}
-                          </span>
-                        </div>
+                        </SortableContext>
                       </div>
                     ))}
-                    {filteredAllDailyJobs.length === 0 && (
-                      <p className="text-center text-sm py-6" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>No jobs match search</p>
+                    {visibleDailyByDriver.length === 0 && (
+                      <p className="text-center text-sm py-6" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                        {allDailyJobs.length === 0 ? 'No daily run active — generate and promote a run first' : 'No jobs match search'}
+                      </p>
                     )}
                   </div>
-                )}
+                  <DragOverlay>
+                    {dailyActiveDragId ? (() => {
+                      const activeDragJob = allDailyJobs.find(j => j.id === dailyActiveDragId);
+                      if (!activeDragJob) return null;
+                      const draggingGroup = selectMode && selectedJobIds.size > 1 && selectedJobIds.has(dailyActiveDragId);
+                      return draggingGroup ? (
+                        <div className="rounded-xl px-3 py-2 text-xs font-semibold" style={{ background: 'var(--amber)', color: '#000' }}>
+                          Moving {selectedJobIds.size} jobs
+                        </div>
+                      ) : (
+                        <div className="rounded-xl px-3 py-2 text-xs font-semibold flex items-center gap-2" style={{ background: 'var(--shell-raised)', border: '1px solid var(--shell-border)', color: '#fff' }}>
+                          <GripVertical className="w-3 h-3" style={{ color: 'var(--text-tertiary)' }} />
+                          {activeDragJob.customerName}
+                        </div>
+                      );
+                    })() : null}
+                  </DragOverlay>
+                </DndContext>
 
                 {/* Stats grid — single driver */}
                 {selectedDriver !== '' && (
@@ -1425,82 +1569,6 @@ export default function AdminPage() {
                   </div>
                 )}
 
-                {/* Today's jobs with search + reallocation */}
-                {dailyJobs.length > 0 && (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-end px-1">
-                      <span className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
-                        {filteredDailyJobs.length} / {dailyJobs.length}
-                      </span>
-                    </div>
-                    {selectMode && (
-                      <p className="text-xs px-1" style={{ color: 'var(--amber)', fontFamily: 'var(--font-dm-sans)' }}>
-                        {selectedJobIds.size > 0 ? `${selectedJobIds.size} selected — pick a driver below` : 'Tap jobs to select for reassignment'}
-                      </p>
-                    )}
-                    <div className="space-y-2">
-                      {filteredDailyJobs.map((job, i) => {
-                        const isSelected = selectedJobIds.has(job.id);
-                        return (
-                          <div
-                            key={job.id}
-                            className="card-shell p-3 flex items-center gap-3 transition-all"
-                            style={{ cursor: selectMode ? 'pointer' : undefined, outline: isSelected ? '2px solid var(--amber)' : undefined, outlineOffset: '-2px' }}
-                            onClick={selectMode ? () => setSelectedJobIds(prev => {
-                              const next = new Set(prev);
-                              if (next.has(job.id)) next.delete(job.id); else next.add(job.id);
-                              return next;
-                            }) : undefined}
-                          >
-                            {selectMode && (
-                              <div
-                                className="flex-shrink-0 flex items-center justify-center rounded-md transition-all"
-                                style={{ width: 20, height: 20, background: isSelected ? 'var(--amber)' : 'var(--shell-raised)', border: `1.5px solid ${isSelected ? 'var(--amber)' : 'var(--shell-border)'}` }}
-                              >
-                                {isSelected && <Check className="w-3 h-3" style={{ color: '#000' }} />}
-                              </div>
-                            )}
-                            <div
-                              className="flex-shrink-0 flex items-center justify-center rounded-lg text-xs font-bold"
-                              style={{ width: 30, height: 30, background: `${statusColor(job.status)}18`, color: statusColor(job.status), fontFamily: 'var(--font-sora)' }}
-                            >
-                              {job.jobOrder}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-semibold truncate" style={{ color: '#fff', fontFamily: 'var(--font-dm-sans)' }}>{job.customerName}</p>
-                              <p className="text-xs truncate" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>{job.address} · {job.driverName}</p>
-                            </div>
-                            <span className={`badge ${
-                              job.status === 'Done' ? 'badge-done' : job.status === 'Issue' ? 'badge-issue' : job.status === 'CouldNotAccess' ? 'badge-cant' : 'badge-pending'
-                            }`} style={{ flexShrink: 0, fontSize: '10px' }}>
-                              {statusLabel(job.status)}
-                            </span>
-                            {!selectMode && (
-                              <div className="flex items-center gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
-                                {!dailySearchActive && (
-                                  <>
-                                    <button onClick={() => handleReorderDaily(filteredDailyJobs, i, -1)} disabled={i === 0} className="w-6 h-6 flex items-center justify-center rounded-md disabled:opacity-20" style={{ background: 'var(--shell-raised)', color: 'var(--text-tertiary)', border: '1px solid var(--shell-border)' }}>
-                                      <ChevronUp className="w-3 h-3" />
-                                    </button>
-                                    <button onClick={() => handleReorderDaily(filteredDailyJobs, i, 1)} disabled={i === filteredDailyJobs.length - 1} className="w-6 h-6 flex items-center justify-center rounded-md disabled:opacity-20" style={{ background: 'var(--shell-raised)', color: 'var(--text-tertiary)', border: '1px solid var(--shell-border)' }}>
-                                      <ChevronDown className="w-3 h-3" />
-                                    </button>
-                                  </>
-                                )}
-                                <button onClick={() => setEditingDailyJob(job)} className="w-6 h-6 flex items-center justify-center rounded-md" style={{ background: 'var(--shell-raised)', color: 'var(--text-tertiary)', border: '1px solid var(--shell-border)' }} title="Edit for today only">
-                                  <Edit3 className="w-3 h-3" />
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                      {filteredDailyJobs.length === 0 && (
-                        <p className="text-center text-sm py-6" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>No jobs match search</p>
-                      )}
-                    </div>
-                  </div>
-                )}
                 </div>
 
                 {/* Day-specific edit — never touches the master job */}
