@@ -6,9 +6,10 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { X, Check, Loader2, Plus, Users2, CalendarClock, Search, GripVertical } from 'lucide-react';
+import { X, Check, Loader2, Plus, Users2, CalendarClock, Search, GripVertical, Edit3 } from 'lucide-react';
 import { Job, ApiResponse } from '@/types';
 import { qtyLabel } from './JobCard';
+import EditDayJobModal, { DayJobEdit } from './EditDayJobModal';
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
@@ -30,13 +31,14 @@ const JOB_TYPES = ['Service', 'Delivery', 'Pickup', 'Adhoc', 'Swapout'];
 // One row in a driver's list. The grip handle is the only draggable surface —
 // the row body stays reserved for the select-mode click target — so dragging
 // and multi-select work at the same time instead of one disabling the other.
-function SortableJobRow({ job, selectMode, isSelected, draggable, onToggleSelect, onRemove }: {
+function SortableJobRow({ job, selectMode, isSelected, draggable, onToggleSelect, onRemove, onEdit }: {
   job: Job;
   selectMode: boolean;
   isSelected: boolean;
   draggable: boolean;
   onToggleSelect: () => void;
   onRemove: () => void;
+  onEdit: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: job.id, disabled: !draggable });
   return (
@@ -88,9 +90,14 @@ function SortableJobRow({ job, selectMode, isSelected, draggable, onToggleSelect
       </div>
       <span className="badge flex-shrink-0" style={{ background: 'var(--shell-border)', color: 'var(--text-tertiary)', fontSize: '9px' }}>{job.jobType}</span>
       {!selectMode && (
-        <button onClick={e => { e.stopPropagation(); onRemove(); }} className="w-6 h-6 flex items-center justify-center rounded-md flex-shrink-0" style={{ background: 'rgba(239,68,68,0.08)', color: '#F87171', border: '1px solid rgba(239,68,68,0.15)' }} title="Remove from tomorrow">
-          <X className="w-3 h-3" />
-        </button>
+        <div className="flex items-center gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
+          <button onClick={onEdit} className="w-6 h-6 flex items-center justify-center rounded-md" style={{ background: 'var(--shell-raised)', color: 'var(--text-tertiary)', border: '1px solid var(--shell-border)' }} title="Edit for today only">
+            <Edit3 className="w-3 h-3" />
+          </button>
+          <button onClick={onRemove} className="w-6 h-6 flex items-center justify-center rounded-md" style={{ background: 'rgba(239,68,68,0.08)', color: '#F87171', border: '1px solid rgba(239,68,68,0.15)' }} title="Remove from tomorrow">
+            <X className="w-3 h-3" />
+          </button>
+        </div>
       )}
     </div>
   );
@@ -113,6 +120,7 @@ export default function TomorrowDispatch({ drivers, onFlash }: TomorrowDispatchP
   const [adhoc, setAdhoc] = useState({ driverName: '', customerName: '', address: '', jobType: 'Adhoc', items: '', quantity: '', notes: '', mapLink: '', phone: '', callAhead: false, scheduledDate: getDefaultDate() });
   const [search, setSearch] = useState('');
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const [editingJob, setEditingJob] = useState<Job | null>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -194,6 +202,14 @@ export default function TomorrowDispatch({ drivers, onFlash }: TomorrowDispatchP
     onFlash(j.success ? `✓ Moved ${selected.size} job(s) to ${reassignTo} for tomorrow` : `✗ ${j.error}`, j.success);
     if (j.success) { setSelected(new Set()); setSelectMode(false); setReassignTo(''); mutate(); }
     setBusy(false);
+  };
+
+  const handleEditJob = async (fields: DayJobEdit) => {
+    if (!editingJob) return { success: false, error: 'No job selected' };
+    const j = await call('PATCH', { action: 'edit', id: editingJob.id, fields });
+    onFlash(j.success ? '✓ Updated for tomorrow only (master schedule unchanged)' : `✗ ${j.error}`, j.success);
+    if (j.success) mutate();
+    return j;
   };
 
   const handleRemove = async (job: Job) => {
@@ -290,6 +306,7 @@ export default function TomorrowDispatch({ drivers, onFlash }: TomorrowDispatchP
                       draggable={!searchActive}
                       onToggleSelect={() => toggleSelect(job.id)}
                       onRemove={() => handleRemove(job)}
+                      onEdit={() => setEditingJob(job)}
                     />
                   ))}
                 </div>
@@ -416,6 +433,11 @@ export default function TomorrowDispatch({ drivers, onFlash }: TomorrowDispatchP
             </div>
           </div>
         </div>
+      )}
+
+      {/* Day-specific edit — never touches the master job */}
+      {editingJob && (
+        <EditDayJobModal job={editingJob} onSave={handleEditJob} onClose={() => setEditingJob(null)} />
       )}
     </div>
   );

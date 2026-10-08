@@ -112,12 +112,32 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// Edit the working copy: reassign between drivers, or save a new order.
+// Fields a one-off, day-specific edit is allowed to touch. Deliberately
+// excludes driverName (Reassign's job), jobOrder (Reorder's job), and
+// scheduling fields (day/frequency/nextServiceDate/scheduledDate) — those
+// drive the recurring Master schedule, not this single day's copy.
+const EDITABLE_FIELDS = ['jobType', 'address', 'phone', 'items', 'quantity', 'notes', 'mapLink', 'callAhead'] as const;
+
+// Edit the working copy: reassign between drivers, save a new order, or
+// tweak an individual job's own fields for this day only.
 export async function PATCH(req: NextRequest) {
   const session = await requireAuth('admin');
   if (!session) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   try {
     const body = await req.json();
+
+    if (body.action === 'edit') {
+      const { id, fields } = body;
+      if (!id || typeof fields !== 'object' || fields === null) {
+        return NextResponse.json({ success: false, error: 'id and fields required' }, { status: 400 });
+      }
+      const data: Record<string, unknown> = {};
+      for (const key of EDITABLE_FIELDS) {
+        if (key in fields) data[key] = fields[key];
+      }
+      await prisma.job.updateMany({ where: { id, runType: 'Tomorrow' }, data });
+      return NextResponse.json({ success: true });
+    }
 
     if (body.action === 'reassign') {
       const { jobIds, driverName } = body;
