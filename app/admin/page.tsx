@@ -1138,15 +1138,6 @@ export default function AdminPage() {
                   <BarChart3 className="w-4 h-4" />
                   Send Daily Summary Email
                 </button>
-                <button
-                  onClick={() => setShowDailyAdhoc(true)}
-                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-all"
-                  style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.25)', color: 'var(--amber)', fontFamily: 'var(--font-dm-sans)' }}
-                >
-                  <Plus className="w-4 h-4" />
-                  Schedule Adhoc Job — Today
-                </button>
-
                 {/* Dashboard search — customer/address + map link */}
                 <div className="card-shell p-4">
                   <div className="flex gap-2">
@@ -1188,6 +1179,43 @@ export default function AdminPage() {
                     {drivers.filter(d => d.isActive).map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
                   </select>
                 </div>
+
+                {/* Today's Run — one card like Generate's Tomorrow's Run — Dispatch,
+                    with Adhoc/Reassign in the header; body below switches between
+                    All Drivers and a single driver's jobs, same content as before. */}
+                <div className="card-shell p-4" style={{ borderLeft: '3px solid rgba(16,185,129,0.5)' }}>
+                  <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <Truck className="w-4 h-4" style={{ color: '#34D399' }} />
+                      <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: '#34D399', fontFamily: 'var(--font-dm-sans)' }}>
+                        Today&apos;s Run — Live
+                      </p>
+                      <span className="badge badge-done" style={{ fontSize: '10px' }}>{allDailyJobs.length} jobs</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setShowDailyAdhoc(true)}
+                        className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all"
+                        style={{ background: 'rgba(245,158,11,0.12)', color: 'var(--amber)', border: '1px solid rgba(245,158,11,0.25)', fontFamily: 'var(--font-dm-sans)' }}
+                      >
+                        <Plus className="w-3 h-3" /> Adhoc
+                      </button>
+                      {selectedDriver !== '' && (
+                        <button
+                          onClick={() => { setSelectMode(s => !s); setSelectedJobIds(new Set()); }}
+                          className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all"
+                          style={{
+                            background: selectMode ? 'rgba(245,158,11,0.15)' : 'var(--shell-border)',
+                            color: selectMode ? 'var(--amber)' : 'var(--text-tertiary)',
+                            border: selectMode ? '1px solid rgba(245,158,11,0.3)' : '1px solid transparent',
+                            fontFamily: 'var(--font-dm-sans)',
+                          }}
+                        >
+                          <Users2 className="w-3 h-3" /> {selectMode ? 'Cancel' : 'Reassign'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
 
                 {/* All-drivers progress grid */}
                 {selectedDriver === '' && (
@@ -1400,28 +1428,10 @@ export default function AdminPage() {
                 {/* Today's jobs with search + reallocation */}
                 {dailyJobs.length > 0 && (
                   <div className="space-y-3">
-                    <div className="flex items-center justify-between px-1">
-                      <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
-                        Today&apos;s Jobs
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
-                          {filteredDailyJobs.length} / {dailyJobs.length}
-                        </span>
-                        <button
-                          onClick={() => { setSelectMode(s => !s); setSelectedJobIds(new Set()); }}
-                          className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all"
-                          style={{
-                            background: selectMode ? 'rgba(245,158,11,0.15)' : 'var(--shell-border)',
-                            color: selectMode ? 'var(--amber)' : 'var(--text-tertiary)',
-                            border: selectMode ? '1px solid rgba(245,158,11,0.3)' : '1px solid transparent',
-                            fontFamily: 'var(--font-dm-sans)',
-                          }}
-                        >
-                          <Users2 className="w-3 h-3" />
-                          {selectMode ? 'Cancel' : 'Reassign'}
-                        </button>
-                      </div>
+                    <div className="flex items-center justify-end px-1">
+                      <span className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                        {filteredDailyJobs.length} / {dailyJobs.length}
+                      </span>
                     </div>
                     {selectMode && (
                       <p className="text-xs px-1" style={{ color: 'var(--amber)', fontFamily: 'var(--font-dm-sans)' }}>
@@ -1491,6 +1501,7 @@ export default function AdminPage() {
                     </div>
                   </div>
                 )}
+                </div>
 
                 {/* Day-specific edit — never touches the master job */}
                 {editingDailyJob && (
