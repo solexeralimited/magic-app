@@ -20,6 +20,7 @@ import {
 import Header from '@/components/Header';
 import StatsCard from '@/components/StatsCard';
 import TomorrowDispatch from '@/components/TomorrowDispatch';
+import EditDayJobModal, { DayJobEdit } from '@/components/EditDayJobModal';
 import Footer from '@/components/Footer';
 import { qtyLabel } from '@/components/JobCard';
 import { Job, RunLogEntry, NotificationLog, AdminMessage, ApiResponse } from '@/types';
@@ -384,6 +385,7 @@ export default function AdminPage() {
   const [generating, setGenerating] = useState(false);
   const [promoting, setPromoting]   = useState(false);
   const [resettingTomorrow, setResettingTomorrow] = useState(false);
+  const [editingDailyJob, setEditingDailyJob] = useState<Job | null>(null);
   const [sheetsImporting, setSheetsImporting] = useState(false);
   const [sheetsSyncing, setSheetsSyncing]     = useState(false);
   const [actionMsg, setActionMsg]   = useState<{ text: string; ok: boolean | 'warning' } | null>(null);
@@ -626,6 +628,14 @@ export default function AdminPage() {
     ];
     await call('PATCH', '/api/jobs', { action: 'reorder', jobs: updates });
     mutateDaily();
+  };
+
+  const handleEditDailyJob = async (fields: DayJobEdit) => {
+    if (!editingDailyJob) return { success: false, error: 'No job selected' };
+    const j = await call('PATCH', '/api/jobs', { action: 'edit', id: editingDailyJob.id, fields });
+    flash(j.success ? '✓ Updated for today only (master schedule unchanged)' : `✗ ${j.error}`, j.success);
+    if (j.success) { mutateDaily(); mutateAllDaily(); }
+    return j;
   };
 
   const handleSheetsImport = async () => {
@@ -1355,13 +1365,20 @@ export default function AdminPage() {
                             }`} style={{ flexShrink: 0, fontSize: '10px' }}>
                               {statusLabel(job.status)}
                             </span>
-                            {!selectMode && !dailySearchActive && (
+                            {!selectMode && (
                               <div className="flex items-center gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
-                                <button onClick={() => handleReorderDaily(filteredDailyJobs, i, -1)} disabled={i === 0} className="w-6 h-6 flex items-center justify-center rounded-md disabled:opacity-20" style={{ background: 'var(--shell-raised)', color: 'var(--text-tertiary)', border: '1px solid var(--shell-border)' }}>
-                                  <ChevronUp className="w-3 h-3" />
-                                </button>
-                                <button onClick={() => handleReorderDaily(filteredDailyJobs, i, 1)} disabled={i === filteredDailyJobs.length - 1} className="w-6 h-6 flex items-center justify-center rounded-md disabled:opacity-20" style={{ background: 'var(--shell-raised)', color: 'var(--text-tertiary)', border: '1px solid var(--shell-border)' }}>
-                                  <ChevronDown className="w-3 h-3" />
+                                {!dailySearchActive && (
+                                  <>
+                                    <button onClick={() => handleReorderDaily(filteredDailyJobs, i, -1)} disabled={i === 0} className="w-6 h-6 flex items-center justify-center rounded-md disabled:opacity-20" style={{ background: 'var(--shell-raised)', color: 'var(--text-tertiary)', border: '1px solid var(--shell-border)' }}>
+                                      <ChevronUp className="w-3 h-3" />
+                                    </button>
+                                    <button onClick={() => handleReorderDaily(filteredDailyJobs, i, 1)} disabled={i === filteredDailyJobs.length - 1} className="w-6 h-6 flex items-center justify-center rounded-md disabled:opacity-20" style={{ background: 'var(--shell-raised)', color: 'var(--text-tertiary)', border: '1px solid var(--shell-border)' }}>
+                                      <ChevronDown className="w-3 h-3" />
+                                    </button>
+                                  </>
+                                )}
+                                <button onClick={() => setEditingDailyJob(job)} className="w-6 h-6 flex items-center justify-center rounded-md" style={{ background: 'var(--shell-raised)', color: 'var(--text-tertiary)', border: '1px solid var(--shell-border)' }} title="Edit for today only">
+                                  <Edit3 className="w-3 h-3" />
                                 </button>
                               </div>
                             )}
@@ -1373,6 +1390,11 @@ export default function AdminPage() {
                       )}
                     </div>
                   </div>
+                )}
+
+                {/* Day-specific edit — never touches the master job */}
+                {editingDailyJob && (
+                  <EditDayJobModal job={editingDailyJob} onSave={handleEditDailyJob} onClose={() => setEditingDailyJob(null)} />
                 )}
               </div>
             )}
