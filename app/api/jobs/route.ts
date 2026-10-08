@@ -19,6 +19,53 @@ export async function GET(req: NextRequest) {
   }
 }
 
+function todayDateString(): string {
+  return new Date().toISOString().split('T')[0];
+}
+
+// Create an ad hoc job directly in today's live Daily run — for something
+// that comes up mid-day, after a run has already been promoted. Mirrors
+// POST /api/jobs/tomorrow's adhoc path, minus scheduledDate (always today).
+export async function POST(req: NextRequest) {
+  const session = await requireAuth('admin');
+  if (!session) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+  try {
+    const body = await req.json();
+    const j = body.job;
+    if (!j || !j.driverName || !j.customerName) {
+      return NextResponse.json({ success: false, error: 'driverName and customerName required' }, { status: 400 });
+    }
+
+    const order = j.jobOrder
+      ? parseInt(j.jobOrder)
+      : (await prisma.job.count({ where: { driverName: j.driverName, runType: 'Daily' } })) + 1;
+    const created = await prisma.job.create({
+      data: {
+        driverName: j.driverName,
+        jobOrder: Math.max(1, order || 1),
+        day: j.day || '',
+        jobType: j.jobType || 'Adhoc',
+        customerName: j.customerName,
+        address: j.address || '',
+        phone: j.phone || '',
+        items: j.items || '',
+        quantity: j.quantity || '',
+        notes: j.notes || '',
+        frequency: j.frequency || '',
+        nextServiceDate: j.nextServiceDate || '',
+        mapLink: j.mapLink || '',
+        callAhead: j.callAhead || false,
+        status: 'Pending',
+        runType: 'Daily',
+        scheduledDate: todayDateString(),
+      },
+    });
+    return NextResponse.json({ success: true, data: created });
+  } catch (err) {
+    return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
+  }
+}
+
 // Fields a one-off, day-specific edit is allowed to touch. Deliberately
 // excludes driverName (reassign's job), jobOrder (reorder's job), and
 // scheduling fields — those drive the recurring Master schedule, not this

@@ -183,6 +183,91 @@ function JobForm({ initial, drivers, onSave, onClose }: {
   );
 }
 
+// ── Ad Hoc Job Form (Promote tab — creates directly into today's live Daily run) ──
+function AddDailyAdhocForm({ drivers, onSave, onClose }: {
+  drivers: DriverRecord[];
+  onSave: (d: Record<string, unknown>) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [form, setForm] = useState({
+    driverName: '',
+    customerName: '',
+    address: '',
+    jobType: 'Adhoc',
+    phone: '',
+    items: '',
+    quantity: '',
+    notes: '',
+    mapLink: '',
+    callAhead: false,
+  });
+  const [saving, setSaving] = useState(false);
+  const set = (k: string, v: unknown) => setForm(f => ({ ...f, [k]: v }));
+
+  return (
+    <Modal title="Schedule Ad Hoc Job — Today" onClose={onClose}>
+      <form onSubmit={async e => { e.preventDefault(); setSaving(true); await onSave(form); setSaving(false); }} className="space-y-4">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="col-span-2">
+            <label className={lbl}>Driver *</label>
+            <select className={inp} value={form.driverName} onChange={e => set('driverName', e.target.value)} required>
+              <option value="">Select driver…</option>
+              {drivers.filter(d => d.isActive).map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+            </select>
+          </div>
+          <div className="col-span-2">
+            <label className={lbl}>Customer *</label>
+            <input className={inp} value={form.customerName} onChange={e => set('customerName', e.target.value)} required />
+          </div>
+          <div className="col-span-2">
+            <label className={lbl}>Address</label>
+            <input className={inp} value={form.address} onChange={e => set('address', e.target.value)} />
+          </div>
+          <div>
+            <label className={lbl}>Job Type</label>
+            <select className={inp} value={form.jobType} onChange={e => set('jobType', e.target.value)}>
+              {JOB_TYPES.map(t => <option key={t}>{t}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={lbl}>Phone</label>
+            <input className={inp} type="tel" value={form.phone} onChange={e => set('phone', e.target.value)} />
+          </div>
+          <div>
+            <label className={lbl}>Unit Type</label>
+            <input className={inp} value={form.items} onChange={e => set('items', e.target.value)} />
+          </div>
+          <div>
+            <label className={lbl}>Quantity</label>
+            <input className={inp} value={form.quantity} onChange={e => set('quantity', e.target.value)} />
+          </div>
+          <div className="col-span-2">
+            <label className={lbl}>Notes</label>
+            <textarea className={inp} rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} />
+          </div>
+          <div className="col-span-2">
+            <label className={lbl}>Map Link</label>
+            <input className={inp} type="url" value={form.mapLink} onChange={e => set('mapLink', e.target.value)} placeholder="https://maps.google.com/…" />
+          </div>
+          <div className="col-span-2 flex items-center gap-3">
+            <input type="checkbox" id="daily-adhoc-ca" checked={form.callAhead} onChange={e => set('callAhead', e.target.checked)} className="w-4 h-4 rounded accent-amber-500" />
+            <label htmlFor="daily-adhoc-ca" className="text-sm font-medium" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-dm-sans)' }}>Call Ahead Required</label>
+          </div>
+        </div>
+        <button
+          type="submit"
+          disabled={saving || !form.driverName || !form.customerName}
+          className="w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+          style={{ background: 'var(--amber)', color: '#000', fontFamily: 'var(--font-dm-sans)' }}
+        >
+          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+          Add to Today&apos;s Run
+        </button>
+      </form>
+    </Modal>
+  );
+}
+
 // ── Driver Form ───────────────────────────────────────────────────────────────
 function DriverForm({ initial, onSave, onClose }: {
   initial?: DriverRecord;
@@ -386,6 +471,7 @@ export default function AdminPage() {
   const [promoting, setPromoting]   = useState(false);
   const [resettingTomorrow, setResettingTomorrow] = useState(false);
   const [editingDailyJob, setEditingDailyJob] = useState<Job | null>(null);
+  const [showDailyAdhoc, setShowDailyAdhoc] = useState(false);
   const [sheetsImporting, setSheetsImporting] = useState(false);
   const [sheetsSyncing, setSheetsSyncing]     = useState(false);
   const [actionMsg, setActionMsg]   = useState<{ text: string; ok: boolean | 'warning' } | null>(null);
@@ -636,6 +722,12 @@ export default function AdminPage() {
     flash(j.success ? '✓ Updated for today only (master schedule unchanged)' : `✗ ${j.error}`, j.success);
     if (j.success) { mutateDaily(); mutateAllDaily(); }
     return j;
+  };
+
+  const handleAddDailyAdhoc = async (d: Record<string, unknown>) => {
+    const j = await call('POST', '/api/jobs', { job: d });
+    flash(j.success ? `✓ Adhoc job added to ${d.driverName}'s run today` : `✗ ${j.error}`, j.success);
+    if (j.success) { setShowDailyAdhoc(false); mutateDaily(); mutateAllDaily(); }
   };
 
   const handleSheetsImport = async () => {
@@ -1046,6 +1138,14 @@ export default function AdminPage() {
                   <BarChart3 className="w-4 h-4" />
                   Send Daily Summary Email
                 </button>
+                <button
+                  onClick={() => setShowDailyAdhoc(true)}
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-all"
+                  style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.25)', color: 'var(--amber)', fontFamily: 'var(--font-dm-sans)' }}
+                >
+                  <Plus className="w-4 h-4" />
+                  Schedule Adhoc Job — Today
+                </button>
 
                 {/* Dashboard search — customer/address + map link */}
                 <div className="card-shell p-4">
@@ -1395,6 +1495,9 @@ export default function AdminPage() {
                 {/* Day-specific edit — never touches the master job */}
                 {editingDailyJob && (
                   <EditDayJobModal job={editingDailyJob} onSave={handleEditDailyJob} onClose={() => setEditingDailyJob(null)} />
+                )}
+                {showDailyAdhoc && (
+                  <AddDailyAdhocForm drivers={drivers} onSave={handleAddDailyAdhoc} onClose={() => setShowDailyAdhoc(false)} />
                 )}
               </div>
             )}
