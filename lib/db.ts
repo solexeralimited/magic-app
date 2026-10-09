@@ -166,6 +166,37 @@ export async function resetTomorrowRun(): Promise<number> {
 // failure — callers use this to show a warning instead of an error.
 export class AlreadyPromotedError extends Error {}
 
+// ─── Sheets import (Master sync) ───────────────────────────────────────────────
+
+// 'sync' mode matches a sheet row to its existing Master job by sheetRowId and
+// updates it in place (same id preserved) instead of recreating it — that id
+// stability is what keeps Tomorrow/Daily copies linked to the right master
+// across a re-import. 'replace' mode always misses here by design: every row
+// is treated as new, which is the whole reason it gives every job a new id.
+export async function findMasterJobBySheetRowId(sheetRowId: string, mode: 'replace' | 'sync') {
+  if (mode === 'replace' || !sheetRowId) return null;
+  return prisma.job.findFirst({ where: { runType: 'Master', sheetRowId } });
+}
+
+// Master rows whose sheet row has genuinely disappeared — used both to
+// preview a 'sync' import (read-only) and to actually apply one.
+export async function countStaleMasterJobs(seenSheetRowIds: string[]): Promise<number> {
+  return prisma.job.count({ where: { runType: 'Master', sheetRowId: { notIn: [...seenSheetRowIds, ''] } } });
+}
+
+export async function removeStaleMasterJobs(seenSheetRowIds: string[]): Promise<number> {
+  const { count } = await prisma.job.deleteMany({
+    where: { runType: 'Master', sheetRowId: { notIn: [...seenSheetRowIds, ''] } },
+  });
+  return count;
+}
+
+// 'replace' mode's full wipe — every Master job, regardless of its sheet link.
+export async function clearAllMasterJobs(): Promise<number> {
+  const { count } = await prisma.job.deleteMany({ where: { runType: 'Master' } });
+  return count;
+}
+
 export async function generateTomorrowRuns(): Promise<Job[]> {
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
