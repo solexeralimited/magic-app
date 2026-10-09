@@ -546,6 +546,7 @@ export default function AdminPage() {
   const [resettingTomorrow, setResettingTomorrow] = useState(false);
   const [editingDailyJob, setEditingDailyJob] = useState<Job | null>(null);
   const [showDailyAdhoc, setShowDailyAdhoc] = useState(false);
+  const [dailyActiveDragId, setDailyActiveDragId] = useState<string | null>(null);
   const [sheetsImporting, setSheetsImporting] = useState(false);
   const [sheetsSyncing, setSheetsSyncing]     = useState(false);
   const [actionMsg, setActionMsg]   = useState<{ text: string; ok: boolean | 'warning' } | null>(null);
@@ -788,8 +789,6 @@ export default function AdminPage() {
     setPromoting(false);
   };
   const handleDailySummary = async () => { const j = await call('POST', '/api/cron/daily-summary', {}); flash(j.success ? '✓ Daily summary sent to admin email' : `✗ ${j.error}`, j.success); };
-
-  const [dailyActiveDragId, setDailyActiveDragId] = useState<string | null>(null);
 
   const toggleDailySelect = (id: string) =>
     setSelectedJobIds(prev => {
