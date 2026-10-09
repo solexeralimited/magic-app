@@ -607,8 +607,12 @@ export default function AdminPage() {
     isAdmin && tab === 'dashboard' && dashboardSubTab === 'promote' ? '/api/jobs/unscheduled' : null, fetcher, { refreshInterval: 10_000 }
   );
 
+  // Backs the whole Promote table now (every driver's jobs, not just the "All
+  // Drivers" progress grid), so it must keep fetching regardless of whether a
+  // driver is selected — it used to stop (and the table along with it) the
+  // moment selectedDriver was set.
   const { data: allDailyData, mutate: mutateAllDaily } = useSWR<ApiResponse<Job[]>>(
-    isAdmin && tab === 'dashboard' && selectedDriver === '' ? '/api/jobs/daily' : null,
+    isAdmin && tab === 'dashboard' ? '/api/jobs/daily' : null,
     fetcher, { refreshInterval: 15_000 }
   );
 
@@ -1318,20 +1322,18 @@ export default function AdminPage() {
                       >
                         <Plus className="w-3 h-3" /> Adhoc
                       </button>
-                      {selectedDriver !== '' && (
-                        <button
-                          onClick={() => { setSelectMode(s => !s); setSelectedJobIds(new Set()); }}
-                          className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all"
-                          style={{
-                            background: selectMode ? 'rgba(245,158,11,0.15)' : 'var(--shell-border)',
-                            color: selectMode ? 'var(--amber)' : 'var(--text-tertiary)',
-                            border: selectMode ? '1px solid rgba(245,158,11,0.3)' : '1px solid transparent',
-                            fontFamily: 'var(--font-dm-sans)',
-                          }}
-                        >
-                          <Users2 className="w-3 h-3" /> {selectMode ? 'Cancel' : 'Reassign'}
-                        </button>
-                      )}
+                      <button
+                        onClick={() => { setSelectMode(s => !s); setSelectedJobIds(new Set()); }}
+                        className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all"
+                        style={{
+                          background: selectMode ? 'rgba(245,158,11,0.15)' : 'var(--shell-border)',
+                          color: selectMode ? 'var(--amber)' : 'var(--text-tertiary)',
+                          border: selectMode ? '1px solid rgba(245,158,11,0.3)' : '1px solid transparent',
+                          fontFamily: 'var(--font-dm-sans)',
+                        }}
+                      >
+                        <Users2 className="w-3 h-3" /> {selectMode ? 'Cancel' : 'Reassign'}
+                      </button>
                     </div>
                   </div>
 
