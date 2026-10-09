@@ -6,7 +6,10 @@ const DB = process.env.DATABASE_URL;
 
 describe.skipIf(!DB)('run lifecycle (integration)', async () => {
   const { prisma } = await import('@/lib/prisma');
-  const { updateJobStatus, promoteToDailyRuns, generateTomorrowRuns, tomorrowRunExists, resetTomorrowRun, AlreadyPromotedError } = await import('@/lib/db');
+  const {
+    updateJobStatus, promoteToDailyRuns, generateTomorrowRuns, tomorrowRunExists, resetTomorrowRun, AlreadyPromotedError,
+    findMasterJobBySheetRowId, countStaleMasterJobs, removeStaleMasterJobs, clearAllMasterJobs,
+  } = await import('@/lib/db');
 
   const wipe = async () => {
     await prisma.runLog.deleteMany({});
@@ -291,5 +294,56 @@ describe.skipIf(!DB)('run lifecycle (integration)', async () => {
     expect(await prisma.job.count()).toBe(0);
     expect(await prisma.runLog.count()).toBe(0);
     expect(await prisma.driver.count({ where: { name: 'Test Driver' } })).toBe(1); // drivers kept
+  });
+
+  describe('sheets import — sync mode keeps master ids stable (regression)', () => {
+    it('sync mode finds an existing master by sheetRowId and preserves its id; replace mode always misses', async () => {
+      const existing = await masterJob({ sheetRowId: 'row-1' });
+
+      const foundSync = await findMasterJobBySheetRowId('row-1', 'sync');
+      expect(foundSync?.id).toBe(existing.id);
+
+      // replace mode is "treat every row as new" by design — it must never
+      // find an existing row, which is exactly what gives every job a new id.
+      const foundReplace = await findMasterJobBySheetRowId('row-1', 'replace');
+      expect(foundReplace).toBeNull();
+    });
+
+    it('findMasterJobBySheetRowId never matches a blank sheetRowId (in-app-created jobs)', async () => {
+      await masterJob({ sheetRowId: '' });
+      expect(await findMasterJobBySheetRowId('', 'sync')).toBeNull();
+    });
+
+    it('removeStaleMasterJobs only deletes master rows whose sheet row has disappeared, leaving in-app-created jobs alone', async () => {
+      const kept = await masterJob({ sheetRowId: 'row-1', customerName: 'Still in sheet' });
+      const stale = await masterJob({ sheetRowId: 'row-2', customerName: 'Removed from sheet', address: '2 Test St' });
+      const manual = await masterJob({ sheetRowId: '', customerName: 'Created in app', address: '3 Test St' });
+
+      const removed = await removeStaleMasterJobs(['row-1']);
+      expect(removed).toBe(1);
+      expect(await prisma.job.findUnique({ where: { id: kept.id } })).not.toBeNull();
+      expect(await prisma.job.findUnique({ where: { id: stale.id } })).toBeNull();
+      expect(await prisma.job.findUnique({ where: { id: manual.id } })).not.toBeNull();
+    });
+
+    it('countStaleMasterJobs previews the same set removeStaleMasterJobs would actually delete', async () => {
+      await masterJob({ sheetRowId: 'row-1' });
+      await masterJob({ sheetRowId: 'row-2', customerName: 'Second', address: '2 Test St' });
+
+      expect(await countStaleMasterJobs(['row-1'])).toBe(1); // preview
+      expect(await prisma.job.count({ where: { runType: 'Master' } })).toBe(2); // nothing actually removed yet
+
+      const removed = await removeStaleMasterJobs(['row-1']);
+      expect(removed).toBe(1); // matches the preview
+    });
+
+    it('clearAllMasterJobs wipes every master row regardless of sheet link (replace mode behavior)', async () => {
+      await masterJob({ sheetRowId: 'row-1' });
+      await masterJob({ sheetRowId: '', customerName: 'Second', address: '2 Test St' });
+
+      const removed = await clearAllMasterJobs();
+      expect(removed).toBe(2);
+      expect(await prisma.job.count({ where: { runType: 'Master' } })).toBe(0);
+    });
   });
 });

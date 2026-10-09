@@ -548,6 +548,7 @@ export default function AdminPage() {
   const [showDailyAdhoc, setShowDailyAdhoc] = useState(false);
   const [dailyActiveDragId, setDailyActiveDragId] = useState<string | null>(null);
   const [sheetsImporting, setSheetsImporting] = useState(false);
+  const [fullRebuilding, setFullRebuilding] = useState(false);
   const [sheetsSyncing, setSheetsSyncing]     = useState(false);
   const [actionMsg, setActionMsg]   = useState<{ text: string; ok: boolean | 'warning' } | null>(null);
   const [msgTo, setMsgTo]           = useState('all');
@@ -851,19 +852,42 @@ export default function AdminPage() {
     if (j.success) { setShowDailyAdhoc(false); mutateDaily(); mutateAllDaily(); }
   };
 
+  // Sync mode matches each sheet row to its existing master job and updates it
+  // in place (same id kept) instead of recreating it — that's what makes this
+  // safe to run any time, including mid-day while drivers are working off a
+  // live Daily run, unlike a full rebuild which breaks that link for every job.
   const handleSheetsImport = async () => {
-    if (!confirm('Import from Google Sheets?\n\nThis removes ALL existing master jobs first, then imports fresh from the sheet — the sheet is the source of truth. Jobs created in-app will also be removed. Tomorrow/Daily runs are not affected.')) return;
+    if (!confirm("Import from Google Sheets?\n\nUpdates master jobs that changed, adds new ones, and removes any deleted from the sheet. Jobs created in the app (not linked to a sheet row) are left alone. Safe to run any time — today's and tomorrow's runs are not affected.")) return;
     setSheetsImporting(true);
-    const j = await call('POST', '/api/sheets/import', { mode: 'replace' });
+    const j = await call('POST', '/api/sheets/import', { mode: 'sync' });
     if (j.success) {
       const d = j.data;
       const errNote = d.errors?.length ? ` (${d.errors.length} rows skipped)` : '';
-      flash(`✓ Imported ${d.created} jobs from the sheet (${d.removed} old jobs cleared)${errNote}`, true);
+      flash(`✓ Synced from sheet — ${d.created} added, ${d.updated} updated, ${d.removed} removed${errNote}`, true);
       setSortableJobs([]);
       mutateMaster();
       if (d.errors?.length) console.warn('Sheets import row errors:', d.errors);
     } else flash(`✗ ${j.error}`, false);
     setSheetsImporting(false);
+  };
+
+  // The old behaviour: wipe every master job and recreate the whole table from
+  // the sheet, giving every row a new id. Only for a genuine from-scratch
+  // rebuild — this breaks the id link for any job currently live in Tomorrow
+  // or Daily, so it should never be reached for routine, day-to-day use.
+  const handleFullRebuild = async () => {
+    if (!confirm('Full Rebuild from Google Sheets?\n\nThis DELETES every existing master job and recreates the whole list fresh from the sheet. Jobs created in the app will also be removed.\n\nAny job currently live in a Tomorrow or Daily run loses its link back to its master — only use this for a genuine fresh start, not routine syncing.')) return;
+    setFullRebuilding(true);
+    const j = await call('POST', '/api/sheets/import', { mode: 'replace' });
+    if (j.success) {
+      const d = j.data;
+      const errNote = d.errors?.length ? ` (${d.errors.length} rows skipped)` : '';
+      flash(`✓ Rebuilt from sheet — ${d.created} jobs created (${d.removed} old jobs cleared)${errNote}`, true);
+      setSortableJobs([]);
+      mutateMaster();
+      if (d.errors?.length) console.warn('Sheets import row errors:', d.errors);
+    } else flash(`✗ ${j.error}`, false);
+    setFullRebuilding(false);
   };
 
   const handleNotRequired = async (jobId: string) => {
@@ -1050,10 +1074,12 @@ export default function AdminPage() {
     setSheetsSaving(false);
   };
 
+  // Previews the sync import (the default, everyday action) — nothing is
+  // written either way; see the dryRun branch in the import route.
   const handleDryRun = async () => {
     setDryRunning(true);
     setDryRunResult(null);
-    const j = await call('POST', '/api/sheets/import', { mode: 'replace', dryRun: true });
+    const j = await call('POST', '/api/sheets/import', { mode: 'sync', dryRun: true });
     if (j.success) setDryRunResult(j.data);
     else flash(`✗ ${j.error}`, false);
     setDryRunning(false);
@@ -2234,14 +2260,29 @@ export default function AdminPage() {
               </button>
             </div>
 
+            <div className="rounded-xl p-3 space-y-2" style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)' }}>
+              <p className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                Import above now <strong style={{ color: 'var(--text-secondary)' }}>syncs</strong> — it matches rows to existing master jobs and keeps their IDs. Only use Full Rebuild if master data is corrupted and you need to wipe and recreate everything from the sheet from scratch.
+              </p>
+              <button
+                onClick={handleFullRebuild}
+                disabled={fullRebuilding}
+                className="w-full py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-40"
+                style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.4)', color: '#FCA5A5', fontFamily: 'var(--font-dm-sans)' }}
+              >
+                {fullRebuilding ? <Loader2 className="w-4 h-4 animate-spin" /> : <AlertTriangle className="w-4 h-4" />}
+                Full Rebuild (wipe &amp; recreate all master jobs)
+              </button>
+            </div>
+
             {dryRunResult && (
               <div className="rounded-xl p-4 space-y-2" style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)' }}>
                 <p className="text-sm font-semibold" style={{ color: '#34D399', fontFamily: 'var(--font-dm-sans)' }}>
                   Reading tab &quot;{dryRunResult.tabs}&quot; — nothing was changed
                 </p>
                 <p className="text-xs" style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-dm-sans)' }}>
-                  Import would load <strong style={{ color: '#fff' }}>{dryRunResult.wouldImport}</strong> jobs
-                  {dryRunResult.wouldRemove !== undefined && <> and clear <strong style={{ color: '#fff' }}>{dryRunResult.wouldRemove}</strong> existing master jobs</>}
+                  Import would create or update <strong style={{ color: '#fff' }}>{dryRunResult.wouldImport}</strong> jobs
+                  {dryRunResult.wouldRemove !== undefined && dryRunResult.wouldRemove > 0 && <> and remove <strong style={{ color: '#fff' }}>{dryRunResult.wouldRemove}</strong> no longer in the sheet</>}
                   {dryRunResult.newIds > 0 && <> · {dryRunResult.newIds} rows would get new permanent IDs</>}
                 </p>
                 {dryRunResult.errors.length > 0 && (

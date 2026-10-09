@@ -3,6 +3,7 @@ import { requireAuth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { sheetsConfigured, getTabName, listTabNames, readRows, writeCells, mapHeaders } from '@/lib/google-sheets';
 import { getSetting, SETTING_KEYS } from '@/lib/settings';
+import { findMasterJobBySheetRowId, countStaleMasterJobs, removeStaleMasterJobs, clearAllMasterJobs } from '@/lib/db';
 
 const VALID_DAYS  = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 const VALID_TYPES = ['Service', 'Delivery', 'Pickup', 'Adhoc', 'Swapout'];
@@ -90,9 +91,12 @@ export async function POST(req: NextRequest) {
       tabRows.set(tab, await readRows(tab));
     }
 
-    if (mode === 'replace') {
-      const { count } = await prisma.job.deleteMany({ where: { runType: 'Master' } });
-      totalRemoved = count;
+    // Dry run must never write — everything below checks `dryRun` before any
+    // create/update/delete, instead of mutating and only shaping the response
+    // afterward (that used to be the bug: a "preview" that silently applied
+    // replace mode's full wipe and recreated every row for real).
+    if (mode === 'replace' && !dryRun) {
+      totalRemoved = await clearAllMasterJobs();
     }
 
     for (const tab of tabs) {
@@ -236,24 +240,25 @@ export async function POST(req: NextRequest) {
           callAhead: callAheadRaw === 'true' || callAheadRaw === 'yes' || callAheadRaw === '1',
         };
 
-        // Create or update job
+        // Create or update job — reads (existence checks) always run so the
+        // counts are accurate; writes are skipped entirely when dryRun.
         if (existingId) {
           allSeenIds.add(existingId);
-          const existing = mode === 'replace'
-            ? null
-            : await prisma.job.findFirst({ where: { runType: 'Master', sheetRowId: existingId } });
+          const existing = await findMasterJobBySheetRowId(existingId, mode);
           if (existing) {
-            await prisma.job.update({ where: { id: existing.id }, data });
+            if (!dryRun) await prisma.job.update({ where: { id: existing.id }, data });
             totalUpdated++;
           } else {
-            await prisma.job.create({ data: { ...(data as object), status: 'Pending', runType: 'Master', sheetRowId: existingId } as never });
+            if (!dryRun) await prisma.job.create({ data: { ...(data as object), status: 'Pending', runType: 'Master', sheetRowId: existingId } as never });
             totalCreated++;
           }
         } else {
-          const job = await prisma.job.create({ data: { ...(data as object), status: 'Pending', runType: 'Master' } as never });
-          await prisma.job.update({ where: { id: job.id }, data: { sheetRowId: job.id } });
-          pendingWrites.push({ row: i, col: idCol, value: job.id });
-          allSeenIds.add(job.id);
+          if (!dryRun) {
+            const job = await prisma.job.create({ data: { ...(data as object), status: 'Pending', runType: 'Master' } as never });
+            await prisma.job.update({ where: { id: job.id }, data: { sheetRowId: job.id } });
+            pendingWrites.push({ row: i, col: idCol, value: job.id });
+            allSeenIds.add(job.id);
+          }
           totalCreated++;
         }
       }
@@ -263,15 +268,19 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    if (mode === 'sync') {
-      const res = await prisma.job.deleteMany({
-        where: { runType: 'Master', sheetRowId: { notIn: [...allSeenIds, ''] } },
-      });
-      totalRemoved = res.count;
+    if (mode === 'sync' && !dryRun) {
+      totalRemoved = await removeStaleMasterJobs([...allSeenIds]);
     }
 
     if (dryRun) {
-      const existingMasters = await prisma.job.count({ where: { runType: 'Master' } });
+      // allSeenIds only holds the ids of rows that matched an existing master in
+      // this pass — brand-new rows (no existing id yet) are correctly excluded,
+      // same as a real run would exclude them (they can't be "stale" before
+      // they exist). replace mode's wipe is previewed as every current master,
+      // since replace treats the whole table as being recreated regardless.
+      const wouldRemove = mode === 'replace'
+        ? await prisma.job.count({ where: { runType: 'Master' } })
+        : await countStaleMasterJobs([...allSeenIds]);
       return NextResponse.json({
         success: true,
         data: {
@@ -280,7 +289,7 @@ export async function POST(req: NextRequest) {
           mode,
           driverTabs,
           wouldImport: totalCreated,
-          wouldRemove: mode === 'replace' ? existingMasters : 0,
+          wouldRemove,
           newIds: totalCreated,
           errors: allErrors,
         },
