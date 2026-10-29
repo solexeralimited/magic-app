@@ -1223,13 +1223,18 @@ export default function AdminPage() {
               <div className="p-5 space-y-4">
                 <button
                   onClick={handleGenerate}
-                  disabled={generating}
+                  disabled={generating || tomorrowJobs.length > 0}
                   className="w-full flex items-center justify-center gap-2 p-4 rounded-2xl font-semibold text-sm transition-all active:scale-95 disabled:opacity-50"
                   style={{ background: 'rgba(34,211,238,0.12)', border: '1px solid rgba(34,211,238,0.2)', color: '#06B6D4', fontFamily: 'var(--font-dm-sans)' }}
                 >
                   {generating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5" />}
                   Generate Tomorrow's Run
                 </button>
+                {tomorrowJobs.length > 0 && (
+                  <p className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                    Already generated for tomorrow — this only runs once a day. Need to regenerate? Unlock it from the Import &amp; API tab.
+                  </p>
+                )}
                 <div className="flex gap-2">
                   <button
                     onClick={handleSheetsImport}
@@ -2272,6 +2277,21 @@ export default function AdminPage() {
               >
                 {fullRebuilding ? <Loader2 className="w-4 h-4 animate-spin" /> : <AlertTriangle className="w-4 h-4" />}
                 Full Rebuild (wipe &amp; recreate all master jobs)
+              </button>
+            </div>
+
+            <div className="rounded-xl p-3 space-y-2" style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)' }}>
+              <p className="text-xs" style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-dm-sans)' }}>
+                &quot;Generate Tomorrow&apos;s Run&quot; only runs once a day — once clicked, it greys out until tomorrow. Unlocking it here discards the prepared run (reassignments, adhoc additions, reordering included) so it can be generated again today.
+              </p>
+              <button
+                onClick={handleResetTomorrow}
+                disabled={resettingTomorrow || tomorrowJobs.length === 0}
+                className="w-full py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-40"
+                style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.4)', color: '#FCD34D', fontFamily: 'var(--font-dm-sans)' }}
+              >
+                {resettingTomorrow ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
+                {tomorrowJobs.length === 0 ? "Generate Button Not Locked" : "Unlock Generate Tomorrow's Run"}
               </button>
             </div>
 
