@@ -1,0 +1,27 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "thunderbox-prod",
+  "main": "src/cloudflare-worker.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  // Mirrors vercel.json's crons: generate-run at 10:00 UTC, promote-run at 16:00 UTC.
+  // Cloudflare cron triggers can't call an HTTP path directly, so the scheduled()
+  // handler in src/cloudflare-worker.ts dispatches to the matching route itself.
+  "triggers": {
+    "crons": ["0 10 * * *", "0 16 * * *"]
+  },
+  // Create this in the dashboard (Workers & Pages > your worker > Settings > Bindings)
+  // pointing at the SAME Postgres instance DATABASE_URL already uses for prod.
+  // Until it's created, replace the placeholder id or remove this block —
+  // deploy will fail with an unresolvable binding otherwise.
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "REPLACE_WITH_HYPERDRIVE_ID"
+    }
+  ]
+}

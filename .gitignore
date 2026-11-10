@@ -17,3 +17,6 @@ prisma/*.db
 
 # Build
 tsconfig.tsbuildinfo
+.open-next/
+.wrangler/
+.dev.vars
