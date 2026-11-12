@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "thunderbox-prod",
+  "main": "src/cloudflare-worker.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  // Mirrors vercel.json's crons: generate-run at 10:00 UTC, promote-run at 16:00 UTC.
+  // Cloudflare cron triggers can't call an HTTP path directly, so the scheduled()
+  // handler in src/cloudflare-worker.ts dispatches to the matching route itself.
+  "triggers": {
+    "crons": ["0 10 * * *", "0 16 * * *"]
+  },
+  // Points at thunderbox-prod-db (Railway Postgres, public networking),
+  // created in the Cloudflare dashboard under Storage & Databases > Hyperdrive.
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "e5b49101dabd40f1a9b46e37148a6a8e"
+    }
+  ]
+}
