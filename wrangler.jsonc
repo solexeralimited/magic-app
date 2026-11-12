@@ -14,14 +14,12 @@
   "triggers": {
     "crons": ["0 10 * * *", "0 16 * * *"]
   },
-  // Create this in the dashboard (Workers & Pages > your worker > Settings > Bindings)
-  // pointing at the SAME Postgres instance DATABASE_URL already uses for prod.
-  // Until it's created, replace the placeholder id or remove this block —
-  // deploy will fail with an unresolvable binding otherwise.
+  // Points at thunderbox-prod-db (Railway Postgres, public networking),
+  // created in the Cloudflare dashboard under Storage & Databases > Hyperdrive.
   "hyperdrive": [
     {
       "binding": "HYPERDRIVE",
-      "id": "REPLACE_WITH_HYPERDRIVE_ID"
+      "id": "e5b49101dabd40f1a9b46e37148a6a8e"
     }
   ]
 }
